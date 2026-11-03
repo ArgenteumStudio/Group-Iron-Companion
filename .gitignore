@@ -1,0 +1,16 @@
+.gradle/
+build/
+target/
+backend/node_modules/
+backend/data/
+backend/.env
+backend/members.json
+backend/skill-emojis.json
+backend/branding.json
+backend/branding/
+backend/.env.*
+!backend/.env.example
+backend/members.json.*
+backend/skill-emojis.json.*
+backend/branding.json.*
+*.log

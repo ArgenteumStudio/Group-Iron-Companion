@@ -1,0 +1,46 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.bowlsofmayo'
+version = '0.2.0'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.runelite.net' }
+}
+
+def localClient = providers.gradleProperty('clientJar')
+dependencies {
+    if (localClient.isPresent()) {
+        compileOnly files(localClient.get())
+        testImplementation files(localClient.get())
+    } else {
+        compileOnly 'net.runelite:client:latest.release'
+        testImplementation 'net.runelite:client:latest.release'
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.register('verifyFeatures', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.bowlsofmayo.FeatureChecks'
+    enableAssertions = true
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyFeatures')
+}
+
+tasks.register('run', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.bowlsofmayo.DevelopmentLauncher'
+    enableAssertions = true
+    args '--developer-mode'
+}
