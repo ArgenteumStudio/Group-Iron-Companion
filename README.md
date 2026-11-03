@@ -15,32 +15,24 @@ This is an independent project and is not affiliated with Jagex or RuneLite.
 
 ## Screenshots
 
-![Fictional group dashboard](screenshots/demo-overview.png)
+Settings page:
 
-<details>
-<summary>More screenshots</summary>
+| Group and website | Website colors | Discord message styles | Preview and save |
+| --- | --- | --- | --- |
+| ![Group and website settings](screenshots/settings-group-website.png) | ![Website color settings](screenshots/settings-website-colors.png) | ![Discord message titles and drop tiers](screenshots/settings-discord-titles-tiers.png) | ![Discord preview and save controls](screenshots/settings-preview-save.png) |
 
-**Web panel settings**
+Fictional demo:
 
-![Group and website settings](screenshots/settings-group-website.png)
-![Website color settings](screenshots/settings-website-colors.png)
-![Discord message settings](screenshots/settings-discord-titles-tiers.png)
-![Settings preview and save](screenshots/settings-preview-save.png)
+| Overview | Banks | Locations and activity | Full-page map |
+| --- | --- | --- | --- |
+| ![Fictional group overview](screenshots/demo-overview.png) | ![Fictional shared banks](screenshots/demo-banks.png) | ![Fictional locations and activity](screenshots/demo-locations-activity.png) | ![Fictional full-page world map](screenshots/demo-world-map.png) |
 
-**Fictional demo**
+## Quick start
 
-![Fictional shared banks](screenshots/demo-banks.png)
-![Fictional locations and activity](screenshots/demo-locations-activity.png)
-![Fictional world map](screenshots/demo-world-map.png)
+Each group hosts its own backend and Discord bot. The host needs Node.js 22 or
+newer; Java 11 or newer is only needed to build the plugin.
 
-</details>
-
-## Self-hosting
-
-Each group runs its own backend and Discord bot. The host needs Node.js 22 or
-newer. Java 11 or newer is needed to build the plugin.
-
-1. In `backend`, install dependencies and create private configuration files:
+1. In `backend`, install dependencies and create the private configuration files:
 
    ```powershell
    Set-Location backend
@@ -50,34 +42,32 @@ newer. Java 11 or newer is needed to build the plugin.
    Copy-Item branding.example.json branding.json
    ```
 
-2. Create a Discord bot. Enable **Message Content Intent** and **Server Members
-   Intent**, invite it to a private channel with permission to view, send messages
-   and read history, then set `DISCORD_TOKEN`, `DISCORD_GUILD_ID` and
-   `DISCORD_CHANNEL_ID` in `.env`.
-3. Add the owner's Discord user ID to `members.json`. The owner needs **Manage
-   Server** permission.
-4. Start the service from `backend`:
+2. Create a Discord bot with **Message Content Intent** and **Server Members
+   Intent** enabled. Invite it to a private channel, add the owner's Discord user
+   ID to `members.json`, and set the bot token, server ID and channel ID in `.env`.
+   The owner needs **Manage Server** permission.
+3. Start the backend from `backend`:
 
    ```powershell
    npm start
    ```
 
-5. In the configured Discord channel, the owner runs `!verify` and receives a
-   private access key. Use it to open the dashboard and generate a separate
-   character token for each player.
-6. In RuneLite, enable **BowlsofMayo Clan Tracker**, set the bridge URL and the
-   player's token. Review the consent warning and enable connection; optional
-   sharing features remain off until selected.
+4. In the configured Discord channel, the owner runs `!verify` and receives a
+   private key by DM. Enter it on the web panel, then use **Manage group** to
+   create a separate character token for each player.
+5. In RuneLite, enable **BowlsofMayo Clan Tracker**, set the backend URL and the
+   player's token. Read and accept the connection consent, then enable only the
+   sharing options you want.
 
-For local use, the backend defaults to `http://localhost:4000`. Remote plugin
-connections require HTTPS. The backend itself serves HTTP, so use a hosting
-platform or other HTTPS front end; keep the backend listener private. A reverse
-proxy is one option, not a required component.
+Use the web panel to view shared group data and manage members/settings. The bot
+posts enabled game alerts to its configured Discord channel; authorized Discord
+users can use `!stats <player>` for the latest synced stats.
 
-Keep `.env`, `members.json`, `branding.json` and `backend/data` private. Never
-publish bot tokens, access keys, real player data or backups. Send each character
-token only to its intended player, and keep the owner key private. Anyone who can
-read the configured Discord channel can see messages posted there.
+Local use defaults to `http://localhost:4000`. Remote plugin connections require
+HTTPS; provide TLS through your hosting platform or another HTTPS front end, and
+keep the backend listener private. Keep `.env`, `members.json`, `branding.json`
+and `backend/data` private. Share each character token only with its intended
+player, and never share the owner key.
 
 ## Development
 
