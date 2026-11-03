@@ -9,6 +9,10 @@ Created using intellectual property belonging to Jagex Limited under the terms
 of Jagex's Fan Content Policy. This content is not endorsed by or affiliated
 with Jagex.
 
+The BSD 2-Clause license applies only to original project code. Jagex-owned
+images and other third-party materials are not covered and remain subject to
+their respective terms.
+
 ## What it includes
 
 - **RuneLite plugin:** share selected game data with your group's server.
