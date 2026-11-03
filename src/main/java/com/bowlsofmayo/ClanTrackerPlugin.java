@@ -1,7 +1,6 @@
 package com.bowlsofmayo;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -74,7 +73,6 @@ import org.slf4j.LoggerFactory;
 public class ClanTrackerPlugin extends Plugin
 {
     private static final Logger LOG = LoggerFactory.getLogger(ClanTrackerPlugin.class);
-    private static final Gson GSON = new GsonBuilder().serializeNulls().create();
     private static final long LOGO_REFRESH_MILLIS = TimeUnit.MINUTES.toMillis(5);
     private static final int LOGO_LIMIT = 5 * 1024 * 1024;
     private static final int ICON_SIZE = 32;
@@ -82,6 +80,7 @@ public class ClanTrackerPlugin extends Plugin
     @Inject private Client client;
     @Inject private ClientThread clientThread;
     @Inject private ClanTrackerConfig config;
+    @Inject private Gson runeLiteGson;
     @Inject private ClientToolbar toolbar;
     @Inject private ItemManager itemManager;
     @Inject private WorldMapPointManager mapManager;
@@ -93,6 +92,7 @@ public class ClanTrackerPlugin extends Plugin
     private final List<PendingLoot> loot = new ArrayList<>();
     private volatile TrackerData.Member snapshot;
     private volatile boolean running;
+    private Gson gson;
     private volatile int generation;
     private volatile int accessRevision;
     private ScheduledExecutorService worker;
@@ -128,6 +128,7 @@ public class ClanTrackerPlugin extends Plugin
     @Override
     protected void startUp()
     {
+        gson = runeLiteGson.newBuilder().serializeNulls().create();
         panel = new ClanPanel(itemManager);
         running = true;
         logoFetchedAt = 0;
@@ -321,7 +322,7 @@ public class ClanTrackerPlugin extends Plugin
         }
         try
         {
-            liveXp.send(new BridgeClient(http, config.serverUrl(), config.memberToken()), GSON,
+            liveXp.send(new BridgeClient(http, config.serverUrl(), config.memberToken()), gson,
                 System.currentTimeMillis());
         }
         catch (IOException | IllegalArgumentException error)
@@ -594,13 +595,13 @@ public class ClanTrackerPlugin extends Plugin
             TrackerData.Member current = snapshot;
             if (current != null && config.enableConnection() && accessRevision == expectedAccessRevision)
             {
-                bridge.post("/v1/snapshot", GSON.toJson(current));
+                bridge.post("/v1/snapshot", gson.toJson(current));
             }
             for (int count = 0; count < 50 && !events.isEmpty() && active(expectedGeneration) &&
                 config.enableConnection() && accessRevision == expectedAccessRevision; count++)
             {
                 TrackerData.Event event = events.peek();
-                bridge.post("/v1/events", GSON.toJson(event));
+                bridge.post("/v1/events", gson.toJson(event));
                 if (!active(expectedGeneration))
                 {
                     return;
@@ -611,7 +612,7 @@ public class ClanTrackerPlugin extends Plugin
             {
                 return;
             }
-            TrackerData.Group group = GSON.fromJson(bridge.get("/v1/group"), TrackerData.Group.class);
+            TrackerData.Group group = gson.fromJson(bridge.get("/v1/group"), TrackerData.Group.class);
             if (group == null || group.members == null)
             {
                 throw new IOException("Bridge returned an invalid group response");
@@ -635,7 +636,7 @@ public class ClanTrackerPlugin extends Plugin
                 }
                 if (!upload.icons.isEmpty())
                 {
-                    bridge.post("/v1/icons", GSON.toJson(upload));
+                    bridge.post("/v1/icons", gson.toJson(upload));
                 }
             }
             SwingUtilities.invokeLater(() -> {
