@@ -12,6 +12,22 @@ import okio.BufferedSource;
 
 final class BridgeClient
 {
+    static final class HttpException extends IOException
+    {
+        private final int statusCode;
+
+        HttpException(int statusCode, String message)
+        {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        boolean rejectsEvent()
+        {
+            return statusCode == 400 || statusCode == 403 || statusCode == 413 || statusCode == 422;
+        }
+    }
+
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private final OkHttpClient http;
     private final String base;
@@ -95,7 +111,7 @@ final class BridgeClient
                         // fall back to the generic message
                     }
                 }
-                throw new IOException("Bridge HTTP " + response.code() + ": " +
+                throw new HttpException(response.code(), "Bridge HTTP " + response.code() + ": " +
                     (reason != null ? reason : "check URL, token and assigned RS name"));
             }
             if (response.body() == null)

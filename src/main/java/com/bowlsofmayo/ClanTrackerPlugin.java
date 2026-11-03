@@ -96,6 +96,8 @@ public class ClanTrackerPlugin extends Plugin
     private Gson gson;
     private volatile int generation;
     private volatile int accessRevision;
+    private final Object uploadStateLock = new Object();
+    private volatile boolean accessResetPending;
     private ScheduledExecutorService worker;
     private ScheduledExecutorService xpWorker;
     private final LiveXpTracker liveXp = new LiveXpTracker();
@@ -135,9 +137,9 @@ public class ClanTrackerPlugin extends Plugin
         running = true;
         logoFetchedAt = 0;
         mapIconFetchedAt = 0;
+        int currentGeneration = ++generation;
         setSidebarIcon(COMPANION_ICON);
         refreshSidebarIcon();
-        int currentGeneration = ++generation;
         worker = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "bowlsofmayo-bridge");
             thread.setDaemon(true);
@@ -265,6 +267,11 @@ public class ClanTrackerPlugin extends Plugin
 
     private void captureSnapshot()
     {
+        if (accessResetPending)
+        {
+            return;
+        }
+        int expectedAccessRevision = accessRevision;
         TrackerData.Member member = new TrackerData.Member();
         member.username = account;
         member.observedAt = System.currentTimeMillis();
@@ -300,13 +307,19 @@ public class ClanTrackerPlugin extends Plugin
             member.groupStorage = groupStorage;
             member.groupStorageUpdatedAt = groupStorageUpdatedAt;
         }
-        snapshot = member;
+        synchronized (uploadStateLock)
+        {
+            if (!accessResetPending && config.enableConnection() && accessRevision == expectedAccessRevision)
+            {
+                snapshot = member;
+            }
+        }
     }
 
     @Subscribe
     public void onStatChanged(StatChanged event)
     {
-        if (account == null || client.getGameState() != GameState.LOGGED_IN ||
+        if (accessResetPending || !config.enableConnection() || account == null || client.getGameState() != GameState.LOGGED_IN ||
             event.getSkill() == null || event.getSkill() == Skill.OVERALL)
         {
             return;
@@ -317,6 +330,7 @@ public class ClanTrackerPlugin extends Plugin
 
     private void sendLiveXp(int expectedGeneration)
     {
+        int expectedAccessRevision = accessRevision;
         if (!active(expectedGeneration) || !config.enableConnection() || !config.shareLiveXp() || !liveXp.hasPending() ||
             System.currentTimeMillis() < nextXpAttempt)
         {
@@ -324,14 +338,17 @@ public class ClanTrackerPlugin extends Plugin
         }
         try
         {
-            liveXp.send(new BridgeClient(http, config.serverUrl(), config.memberToken()), gson,
-                System.currentTimeMillis());
+            BridgeClient bridge = new BridgeClient(http, config.serverUrl(), config.memberToken());
+            if (canSync(expectedGeneration, expectedAccessRevision) && config.shareLiveXp())
+            {
+                liveXp.send(bridge, gson, System.currentTimeMillis());
+            }
         }
         catch (IOException | IllegalArgumentException error)
         {
             nextXpAttempt = System.currentTimeMillis() + 5000;
             LOG.warn("BowlsofMayo live XP sync failed: {}", error.getMessage());
-            showStatus("Live XP not synced: " + error.getMessage());
+            showStatus("Live XP not synced: " + error.getMessage(), expectedGeneration, expectedAccessRevision);
         }
     }
 
@@ -561,22 +578,62 @@ public class ClanTrackerPlugin extends Plugin
 
     private void enqueue(TrackerData.Event event)
     {
-        if (!config.enableConnection())
+        synchronized (uploadStateLock)
         {
-            return;
+            if (accessResetPending || !config.enableConnection() || !eventEnabled(event))
+            {
+                return;
+            }
+            if (events.size() >= 2000)
+            {
+                LOG.error("BowlsofMayo alert queue full; cannot queue {} alert", event.type);
+                showStatus("Alert queue full! Check bridge connection.");
+                return;
+            }
+            events.add(event);
         }
-        if (events.size() >= 2000)
-        {
-            LOG.error("BowlsofMayo alert queue full; cannot queue {} alert", event.type);
-            showStatus("Alert queue full! Check bridge connection.");
-            return;
-        }
-        events.add(event);
     }
 
     private boolean active(int expectedGeneration)
     {
         return running && generation == expectedGeneration;
+    }
+
+    private boolean canSync(int expectedGeneration, int expectedAccessRevision)
+    {
+        return active(expectedGeneration) && !accessResetPending && config.enableConnection() &&
+            accessRevision == expectedAccessRevision;
+    }
+
+    private boolean eventEnabled(TrackerData.Event event)
+    {
+        switch (event.type)
+        {
+            case "chat": return config.shareChat();
+            case "boss": return config.bossAlerts();
+            case "loot": return config.dropAlerts();
+            case "quest": return config.questAlerts();
+            default: throw new IllegalArgumentException("Unknown alert type: " + event.type);
+        }
+    }
+
+    private TrackerData.Member snapshotForUpload(TrackerData.Member source)
+    {
+        TrackerData.Member upload = new TrackerData.Member();
+        upload.username = source.username;
+        upload.stats = source.stats;
+        upload.questPoints = source.questPoints;
+        upload.observedAt = source.observedAt;
+        upload.position = config.shareLocation() ? source.position : null;
+        upload.bankShared = config.shareBank() && source.bankShared;
+        if (upload.bankShared)
+        {
+            upload.bank = source.bank;
+            upload.bankUpdatedAt = source.bankUpdatedAt;
+            upload.groupStorage = source.groupStorage;
+            upload.groupStorageUpdatedAt = source.groupStorageUpdatedAt;
+        }
+        return upload;
     }
 
     private void synchronize(int expectedGeneration)
@@ -595,22 +652,60 @@ public class ClanTrackerPlugin extends Plugin
         {
             BridgeClient bridge = new BridgeClient(http, config.serverUrl(), config.memberToken());
             TrackerData.Member current = snapshot;
-            if (current != null && config.enableConnection() && accessRevision == expectedAccessRevision)
+            if (current != null && canSync(expectedGeneration, expectedAccessRevision))
             {
-                bridge.post("/v1/snapshot", gson.toJson(current));
-            }
-            for (int count = 0; count < 50 && !events.isEmpty() && active(expectedGeneration) &&
-                config.enableConnection() && accessRevision == expectedAccessRevision; count++)
-            {
-                TrackerData.Event event = events.peek();
-                bridge.post("/v1/events", gson.toJson(event));
-                if (!active(expectedGeneration))
+                String json = gson.toJson(snapshotForUpload(current));
+                if (!canSync(expectedGeneration, expectedAccessRevision))
                 {
                     return;
                 }
-                events.remove(event);
+                bridge.post("/v1/snapshot", json);
             }
-            if (!config.enableConnection() || accessRevision != expectedAccessRevision)
+            String alertStatus = "";
+            for (int count = 0; count < 50 && canSync(expectedGeneration, expectedAccessRevision); count++)
+            {
+                TrackerData.Event event = events.peek();
+                if (event == null)
+                {
+                    break;
+                }
+                if (!eventEnabled(event))
+                {
+                    events.remove(event);
+                    continue;
+                }
+                try
+                {
+                    String json = gson.toJson(event);
+                    if (!canSync(expectedGeneration, expectedAccessRevision) || !eventEnabled(event))
+                    {
+                        return;
+                    }
+                    bridge.post("/v1/events", json);
+                    events.remove(event);
+                }
+                catch (IOException error)
+                {
+                    if (!canSync(expectedGeneration, expectedAccessRevision))
+                    {
+                        return;
+                    }
+                    boolean rejected = error instanceof BridgeClient.HttpException &&
+                        ((BridgeClient.HttpException) error).rejectsEvent();
+                    alertStatus = rejected ? "Alert rejected and discarded: " + error.getMessage() :
+                        "Alerts waiting for retry: " + error.getMessage();
+                    LOG.warn("{} (type={}, id={})", alertStatus, event.type, event.id);
+                    if (rejected)
+                    {
+                        events.remove(event);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            if (!canSync(expectedGeneration, expectedAccessRevision))
             {
                 return;
             }
@@ -619,8 +714,8 @@ public class ClanTrackerPlugin extends Plugin
             {
                 throw new IOException("Bridge returned an invalid group response");
             }
-            if (current != null && current.bankShared && config.enableConnection() &&
-                accessRevision == expectedAccessRevision)
+            if (current != null && current.bankShared && config.shareBank() &&
+                canSync(expectedGeneration, expectedAccessRevision))
             {
                 TrackerData.Icons upload = new TrackerData.Icons();
                 upload.username = current.username;
@@ -636,7 +731,7 @@ public class ClanTrackerPlugin extends Plugin
                         }
                     }
                 }
-                if (!upload.icons.isEmpty())
+                if (!upload.icons.isEmpty() && config.shareBank() && canSync(expectedGeneration, expectedAccessRevision))
                 {
                     bridge.post("/v1/icons", gson.toJson(upload));
                 }
@@ -658,18 +753,18 @@ public class ClanTrackerPlugin extends Plugin
                 System.currentTimeMillis() - mapIconFetchedAt > MAP_ICON_REFRESH_MILLIS)
             {
                 mapIconFetchedAt = System.currentTimeMillis();
-                fetchMapIcon(bridge, expectedGeneration);
+                fetchMapIcon(bridge, expectedGeneration, expectedAccessRevision);
             }
             if (active(expectedGeneration))
             {
-                showStatus("");
+                showStatus(alertStatus, expectedGeneration, expectedAccessRevision);
             }
             if (config.enableConnection() && accessRevision == expectedAccessRevision &&
                 config.sidebarIcon() == SidebarIcon.GROUP_LOGO &&
                 System.currentTimeMillis() - logoFetchedAt > LOGO_REFRESH_MILLIS)
             {
                 logoFetchedAt = System.currentTimeMillis();
-                fetchLogo(bridge, expectedGeneration);
+                fetchLogo(bridge, expectedGeneration, expectedAccessRevision);
             }
         }
         catch (IOException | IllegalArgumentException | com.google.gson.JsonParseException error)
@@ -738,8 +833,13 @@ public class ClanTrackerPlugin extends Plugin
 
     private void showStatus(String status)
     {
+        showStatus(status, generation, accessRevision);
+    }
+
+    private void showStatus(String status, int expectedGeneration, int expectedAccessRevision)
+    {
         SwingUtilities.invokeLater(() -> {
-            if (running)
+            if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
             {
                 panel.setStatus(status);
             }
@@ -756,19 +856,45 @@ public class ClanTrackerPlugin extends Plugin
         switch (event.getKey())
         {
             case "enableConnection":
-                accessRevision++;
-                snapshot = null;
-                events.clear();
-                clientThread.invokeLater(this::resetAccount);
+                resetUploadAccess();
                 clearGroupData(config.enableConnection() ? "Waiting for sync." :
                     "Connection disabled - no data sent.", generation, accessRevision);
                 break;
             case "shareLiveXp":
-                clientThread.invokeLater(liveXp::clear);
+            case "shareBank":
+            case "shareLocation":
+            case "shareChat":
+            case "bossAlerts":
+            case "dropAlerts":
+            case "questAlerts":
+                synchronized (uploadStateLock)
+                {
+                    accessRevision++;
+                    snapshot = null;
+                    events.removeIf(queued -> !eventEnabled(queued));
+                }
+                if (event.getKey().equals("shareLiveXp"))
+                {
+                    liveXp.discardPending();
+                    clientThread.invokeLater(liveXp::clear);
+                }
+                if (event.getKey().equals("shareBank"))
+                {
+                    clientThread.invokeLater(() -> {
+                        bank = null;
+                        bankUpdatedAt = 0;
+                        groupStorage = null;
+                        groupStorageUpdatedAt = 0;
+                    });
+                }
+                if (event.getKey().equals("dropAlerts"))
+                {
+                    clientThread.invokeLater(loot::clear);
+                }
                 break;
             case "serverUrl":
             case "memberToken":
-                accessRevision++;
+                resetUploadAccess();
                 clearGroupData("Access changed - waiting for sync.", generation, accessRevision);
                 logo = null;
                 mapIcon = null;
@@ -785,6 +911,26 @@ public class ClanTrackerPlugin extends Plugin
             default:
                 break;
         }
+    }
+
+    private void resetUploadAccess()
+    {
+        synchronized (uploadStateLock)
+        {
+            accessResetPending = true;
+            accessRevision++;
+            snapshot = null;
+            events.clear();
+            liveXp.discardPending();
+        }
+        nextXpAttempt = 0;
+        clientThread.invokeLater(() -> {
+            synchronized (uploadStateLock)
+            {
+                resetAccount();
+                accessResetPending = false;
+            }
+        });
     }
 
     private void refreshSidebarIcon()
@@ -820,7 +966,7 @@ public class ClanTrackerPlugin extends Plugin
         });
     }
 
-    private void fetchLogo(BridgeClient bridge, int expectedGeneration)
+    private void fetchLogo(BridgeClient bridge, int expectedGeneration, int expectedAccessRevision)
     {
         try
         {
@@ -836,11 +982,17 @@ public class ClanTrackerPlugin extends Plugin
             {
                 throw new IOException("unsupported image format");
             }
-            logo = iconImage(image);
-            logoHash = hash;
-            if (active(expectedGeneration) && config.sidebarIcon() == SidebarIcon.GROUP_LOGO)
+            synchronized (uploadStateLock)
             {
-                setSidebarIcon(logo);
+                if (canSync(expectedGeneration, expectedAccessRevision))
+                {
+                    logo = iconImage(image);
+                    logoHash = hash;
+                    if (config.sidebarIcon() == SidebarIcon.GROUP_LOGO)
+                    {
+                        setSidebarIcon(logo);
+                    }
+                }
             }
         }
         catch (IOException error)
@@ -855,7 +1007,7 @@ public class ClanTrackerPlugin extends Plugin
         return current != null ? current : marker();
     }
 
-    private void fetchMapIcon(BridgeClient bridge, int expectedGeneration) throws IOException
+    private void fetchMapIcon(BridgeClient bridge, int expectedGeneration, int expectedAccessRevision) throws IOException
     {
         byte[] bytes = bridge.getBytes("/map-icon", 32768);
         BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
@@ -864,7 +1016,7 @@ public class ClanTrackerPlugin extends Plugin
             throw new IOException("Map icon must be a PNG no larger than 32 x 32");
         }
         clientThread.invokeLater(() -> {
-            if (active(expectedGeneration))
+            if (canSync(expectedGeneration, expectedAccessRevision))
             {
                 mapIcon = image;
                 updateMap(groupMembers);
@@ -874,8 +1026,10 @@ public class ClanTrackerPlugin extends Plugin
 
     private void setSidebarIcon(BufferedImage icon)
     {
+        int expectedGeneration = generation;
+        int expectedAccessRevision = accessRevision;
         SwingUtilities.invokeLater(() -> {
-            if (!running || panel == null)
+            if (!active(expectedGeneration) || accessRevision != expectedAccessRevision || panel == null)
             {
                 return;
             }

@@ -84,6 +84,16 @@ keep the backend listener private. Keep `.env`, `members.json`, `branding.json`
 and `backend/data` private. Share each character token only with its intended
 player, and never share the owner key.
 
+Changing the bridge URL or member token discards pending uploads and starts a
+fresh account snapshot. Disabling a sharing option prevents its queued data from
+being sent; changing bank sharing requires reopening the bank or group storage.
+Requests already in flight cannot be recalled, and disabling sharing does not
+delete data already stored on the server.
+
+Alerts rejected with HTTP 400, 403, 413 or 422 are discarded with a warning.
+Temporary failures, including rate limits and server errors, keep alerts queued
+for retry without blocking group refreshes.
+
 ## Development
 
 Build and check the plugin, then run the backend tests:

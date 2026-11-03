@@ -74,6 +74,7 @@ public final class FeatureChecks
         rejects(() -> new BridgeClient(http, "https://user:pass@example.com", "a".repeat(48)));
         checkEventHandlers();
         checkLiveXp();
+        SyncChecks.run();
         BufferedImage wide = new BufferedImage(200, 50, BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D paint = wide.createGraphics();
         paint.setColor(java.awt.Color.RED);

@@ -53,6 +53,11 @@ final class LiveXpTracker
     void clear()
     {
         clearBaseline();
+        discardPending();
+    }
+
+    void discardPending()
+    {
         pending.clear();
     }
 
