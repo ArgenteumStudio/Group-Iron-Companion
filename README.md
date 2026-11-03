@@ -66,6 +66,8 @@ newer; Java 11 or newer is only needed to build the plugin.
 5. In RuneLite, enable **Group Iron Companion**, set the backend URL and the
    player's token. Read and accept the connection consent, then enable only the
    sharing options you want.
+   The sidebar connection notice hides while the connection is enabled and
+   returns when it is disabled.
 
 Use the web panel to view shared group data and manage members/settings. The bot
 posts enabled game alerts to its configured Discord channel; authorized Discord

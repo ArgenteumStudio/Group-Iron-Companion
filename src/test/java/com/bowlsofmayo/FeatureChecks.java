@@ -49,6 +49,7 @@ public final class FeatureChecks
         assert ClanPanel.quantity(9999999).equals("9999K");
         assert ClanPanel.quantity(10000000).equals("10M");
         assert ClanPanel.quantity(Integer.MAX_VALUE).equals("2147M");
+        checkConnectionNotice();
 
         Gson gson = new GsonBuilder().serializeNulls().create();
         TrackerData.Member member = new TrackerData.Member();
@@ -83,6 +84,29 @@ public final class FeatureChecks
         assert (icon.getRGB(icon.getWidth() / 2, icon.getHeight() / 2) >>> 24) != 0;
         assert ClanTrackerPlugin.iconImage(new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB)) != null;
         System.out.println("Java feature checks passed (KC parsing, chat filtering, quest transitions, banks, world map, JSON contract, transport).");
+    }
+
+    private static void checkConnectionNotice() throws Exception
+    {
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            ClanPanel panel = new ClanPanel(null);
+            java.awt.Container header = (java.awt.Container) panel.getComponent(0);
+            java.awt.Component notice = header.getComponent(1);
+            panel.setSize(net.runelite.client.ui.PluginPanel.PANEL_WIDTH, 600);
+            panel.doLayout();
+            header.doLayout();
+            assert notice.getPreferredSize().width <= header.getWidth() : "Consent notice must fit the sidebar";
+            assert notice.getX() == 0 : "Consent notice must align with the sidebar's left edge";
+            java.awt.Insets padding = ((javax.swing.JComponent) notice).getInsets();
+            assert padding.top == 8 && padding.bottom == 8 : "Consent notice must have vertical spacing";
+            assert notice.isVisible() : "Consent notice must be visible before opting in";
+            panel.setConnectionEnabled(true);
+            assert !notice.isVisible() : "Consent notice must hide after opting in";
+            panel.clear("Not synced: connection unavailable");
+            assert !notice.isVisible() : "Connection errors must not restore the consent notice";
+            panel.setConnectionEnabled(false);
+            assert notice.isVisible() : "Consent notice must return when connection is disabled";
+        });
     }
 
     private static void checkEventHandlers() throws Exception

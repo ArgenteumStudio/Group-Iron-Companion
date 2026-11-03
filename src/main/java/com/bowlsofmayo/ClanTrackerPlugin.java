@@ -129,6 +129,7 @@ public class ClanTrackerPlugin extends Plugin
     {
         gson = runeLiteGson.newBuilder().serializeNulls().create();
         panel = new ClanPanel(itemManager);
+        panel.setConnectionEnabled(config.enableConnection());
         running = true;
         logoFetchedAt = 0;
         mapIconFetchedAt = 0;
@@ -659,7 +660,7 @@ public class ClanTrackerPlugin extends Plugin
             }
             if (active(expectedGeneration))
             {
-                showStatus("Connected - " + group.members.size() + " synced member(s)");
+                showStatus("");
             }
             if (config.enableConnection() && accessRevision == expectedAccessRevision &&
                 config.sidebarIcon() == SidebarIcon.GROUP_LOGO &&
@@ -682,6 +683,7 @@ public class ClanTrackerPlugin extends Plugin
             if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
             {
                 panel.clear(message);
+                panel.setConnectionEnabled(config.enableConnection());
             }
         });
         clientThread.invokeLater(() -> {

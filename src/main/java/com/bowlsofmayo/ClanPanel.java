@@ -16,6 +16,7 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.OverlayLayout;
 import javax.swing.SwingConstants;
@@ -30,6 +31,9 @@ public class ClanPanel extends PluginPanel
     private static final String GROUP_STORAGE = "Group storage";
     private final ItemManager itemManager;
     private final JLabel status = new JLabel("Configure bridge URL and member token");
+    private final JTextArea privacy = new JTextArea("Connection is opt-in. Uploads go to " +
+        "your configured server operator, who can read, store and share them. " +
+        "Alerts may also go to Discord. Disabling does not delete past data.");
     private final JComboBox<String> selector = new JComboBox<>();
     private final JTextField search = new JTextField();
     private final JLabel note = new JLabel();
@@ -45,14 +49,27 @@ public class ClanPanel extends PluginPanel
         setLayout(new BorderLayout(0, 8));
         JPanel header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        privacy.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
+        privacy.setFont(status.getFont());
+        privacy.setForeground(status.getForeground());
+        privacy.setOpaque(false);
+        privacy.setEditable(false);
+        privacy.setFocusable(false);
+        privacy.setLineWrap(true);
+        privacy.setWrapStyleWord(true);
+        privacy.setSize(PANEL_WIDTH - 2 * BORDER_OFFSET, Short.MAX_VALUE);
+        privacy.setMaximumSize(privacy.getPreferredSize());
         header.add(status);
-        JLabel privacy = new JLabel("<html>Connection is opt-in. Uploads go to<br>your configured server operator,<br>who can read, store and share them.<br>Alerts may also go to Discord.<br>Disabling does not delete past data.</html>");
         header.add(privacy);
         header.add(selector);
         search.setToolTipText("Search bank items by name");
         header.add(new JLabel("Search bank"));
         header.add(search);
         header.add(note);
+        for (java.awt.Component component : header.getComponents())
+        {
+            ((javax.swing.JComponent) component).setAlignmentX(LEFT_ALIGNMENT);
+        }
         add(header, BorderLayout.NORTH);
         contents.setLayout(new BoxLayout(contents, BoxLayout.Y_AXIS));
         contents.setBackground(new Color(70, 60, 45));
@@ -68,10 +85,17 @@ public class ClanPanel extends PluginPanel
         });
     }
 
+    void setConnectionEnabled(boolean enabled)
+    {
+        privacy.setVisible(!enabled);
+        revalidate();
+        repaint();
+    }
+
     void setStatus(String message)
     {
         status.setText(message);
-        status.setToolTipText(message);
+        status.setToolTipText(message.isEmpty() ? null : message);
     }
 
     void update(TrackerData.Group group)
