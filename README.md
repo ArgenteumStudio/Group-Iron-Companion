@@ -1,7 +1,7 @@
 # Group Iron Companion
 
-An opt-in RuneLite plugin for Group Ironman tracking, with a self-hosted web
-dashboard and Discord bot.
+An opt-in RuneLite plugin for Group Ironman members to share selected game data
+with their clan's private dashboard and Discord alerts.
 
 This is an independent project and is not affiliated with Jagex or RuneLite.
 
@@ -9,120 +9,74 @@ Created using intellectual property belonging to Jagex Limited under the terms
 of Jagex's Fan Content Policy. This content is not endorsed by or affiliated
 with Jagex.
 
-The BSD 2-Clause license applies only to original project code. Jagex-owned
-images and other third-party materials are not covered and remain subject to
-their respective terms.
+## Getting started
 
-## What it includes
+Your clan must already have a Group Iron Companion server. Ask your clan
+administrator for the server URL, dashboard link and your individual character
+token. Clan members do not need to run a server or build the plugin.
 
-- **RuneLite plugin:** share selected game data with your group's server.
-- **Web dashboard:** view member stats, banks, activity and locations; manage
-  group access and customise the panel.
-- **Discord bot:** verify the group owner, issue access and receive opt-in
-  game-event alerts.
+1. Search for **Group Iron Companion** in RuneLite's Plugin Hub and install it
+   once it is available.
+2. Open the plugin settings and enter the server URL and your character token.
+   Remote connections require an **HTTPS** URL.
+3. Read and accept the connection consent, then enable the connection.
+4. Enable only the sharing options you want. Sharing features are off by default.
+5. Open the sidebar to view group data, or visit the dashboard link provided by
+   your clan.
 
-## Screenshots
+Share your character token only with its intended player. Do not post it in
+public channels or screenshots, and never use or share the clan owner's key.
+If your token no longer works, contact your clan administrator.
 
-Settings page:
+## What you can use
 
-| Group and website | Website colors | Discord message styles | Preview and save |
-| --- | --- | --- | --- |
-| ![Group and website settings](screenshots/settings-group-website.png) | ![Website color settings](screenshots/settings-website-colors.png) | ![Discord message titles and drop tiers](screenshots/settings-discord-titles-tiers.png) | ![Discord preview and save controls](screenshots/settings-preview-save.png) |
+- Share selected stats, bank and group storage data, activity and locations.
+- View your group's shared information on the dashboard.
+- Receive game-event alerts in your clan's configured Discord channels when
+  you opt in.
+- Authorized Discord users can use `!stats <player>` for the latest synced stats.
 
-Fictional demo:
+Reopen your bank or group storage after enabling or changing bank sharing so
+the plugin can collect a fresh snapshot.
+
+The default sidebar icon is the three-companion shield. Select
+**Sidebar icon > Companion shield** to switch back from a group logo or item icon.
+
+## Privacy and connection status
+
+Only connect to a server you trust. Your selected data is sent to the server
+provided by your clan, not to RuneLite.
+
+Changing the server URL or character token discards pending uploads and starts
+a fresh account snapshot. Disabling a sharing option prevents its queued data
+from being sent. Requests already in flight cannot be recalled, and disabling
+sharing does not delete data already stored on the server. Contact your clan
+administrator about stored data.
+
+Turning the plugin off discards unsent alerts, pending loot and live XP drops.
+Turning it back on starts fresh. Alerts already accepted by the server can
+still finish posting to Discord.
+
+The sidebar reports group, live XP and alert upload errors separately. Temporary
+connection failures are retried; rejected alerts are discarded with a warning.
+Expired live XP drops are reported as not delivered live, and a later successful
+sync does not mean those expired drops were delivered.
+
+## Dashboard preview
+
+These screenshots use fictional group data:
 
 | Overview | Banks | Locations and activity | Full-page map |
 | --- | --- | --- | --- |
 | ![Fictional group overview](screenshots/demo-overview.png) | ![Fictional shared banks](screenshots/demo-banks.png) | ![Fictional locations and activity](screenshots/demo-locations-activity.png) | ![Fictional full-page world map](screenshots/demo-world-map.png) |
 
-## Quick start
+## Support
 
-Each group hosts its own backend and Discord bot. The host needs Node.js 22 or
-newer; Java 11 or newer is only needed to build the plugin.
+For server access, tokens or dashboard permissions, contact your clan
+administrator. For plugin bugs, use the
+[issue tracker](https://github.com/ArgenteumStudio/MayoClan/issues).
 
-1. In `backend`, install dependencies and create the private configuration files:
-
-   ```powershell
-   Set-Location backend
-   npm ci
-   Copy-Item .env.example .env
-   Copy-Item members.example.json members.json
-   Copy-Item branding.example.json branding.json
-   ```
-
-2. Create a Discord bot with **Message Content Intent** and **Server Members
-   Intent** enabled. Invite it to a private channel, add the owner's Discord user
-   ID to `members.json`, and set the bot token, server ID and channel ID in `.env`.
-   The owner needs **Manage Server** permission.
-3. Start the backend from `backend`:
-
-   ```powershell
-   npm start
-   ```
-
-4. In the configured Discord channel, the owner runs `!verify` and receives a
-   private key by DM. Enter it on the web panel, then use **Manage group** to
-   create a separate character token for each player.
-5. In RuneLite, enable **Group Iron Companion**, set the backend URL and the
-   player's token. Read and accept the connection consent, then enable only the
-   sharing options you want.
-   The sidebar connection notice hides while the connection is enabled and
-   returns when it is disabled.
-
-Use the web panel to view shared group data and manage members/settings. The bot
-posts enabled game alerts to its configured Discord channel; authorized Discord
-users can use `!stats <player>` for the latest synced stats.
-
-The Plugin Hub icon and default sidebar icon use the three-companion shield.
-Existing sidebar choices are preserved; select **Sidebar icon > Companion shield**
-to switch back from a group logo or item icon. The editable artwork is in
-[`assets/group-iron-companion.svg`](assets/group-iron-companion.svg).
-
-Local use defaults to `http://localhost:4000`. Remote plugin connections require
-HTTPS; provide TLS through your hosting platform or another HTTPS front end, and
-keep the backend listener private. Keep `.env`, `members.json`, `branding.json`
-and `backend/data` private. Share each character token only with its intended
-player, and never share the owner key.
-
-Changing the bridge URL or member token discards pending uploads and starts a
-fresh account snapshot. Disabling a sharing option prevents its queued data from
-being sent; changing bank sharing requires reopening the bank or group storage.
-Requests already in flight cannot be recalled, and disabling sharing does not
-delete data already stored on the server.
-
-Turning the plugin off discards unsent alerts, pending loot and live XP drops.
-Turning it back on starts fresh, even if the server and token are unchanged.
-Alerts already accepted by the backend can still finish posting to Discord.
-
-Alerts rejected with HTTP 400, 403, 413 or 422 are discarded with a warning.
-Temporary failures, including rate limits and server errors, keep alerts queued
-for retry without blocking group refreshes.
-
-The sidebar tracks group, live XP and alert upload errors independently. A group
-refresh does not clear a live XP error; successful XP delivery clears its own
-error. Unsent live drops that expire are explicitly reported as not delivered
-live. Optional map/logo download failures retain cached/default images and do
-not discard successfully downloaded group data. Optional bank-icon upload
-failures also leave member/bank data available and retry on the next sync.
-The most recent live-XP expiration notice remains visible across successful
-retries until live-XP sharing or connection/access settings change, or the plugin
-is restarted; recovery does not imply the expired drops were delivered.
-
-## Development
-
-The plugin coordinates RuneLite events and lifecycle. Upload filtering/retries
-live in `UploadCoordinator`, status ownership in `SyncStatus`, bank collection
-in `BankSnapshots`, and image decoding/scaling in `TrackerImages`.
-
-Build and check the plugin, then run the backend tests:
-
-```powershell
-.\gradlew.bat jar verifyFeatures
-Set-Location backend
-npm ci
-npm test
-```
-
-To preview the website with fictional data, run `npm run preview` from `backend`
-and open `http://127.0.0.1:4173`. The preview does not use real group data or send
-Discord notifications.
+Clan administrators can find the separately maintained server and its
+documentation in
+[GroupIronCompanion-Backend](https://github.com/ArgenteumStudio/GroupIronCompanion-Backend).
+Plugin development instructions are in [CONTRIBUTING.md](CONTRIBUTING.md).
