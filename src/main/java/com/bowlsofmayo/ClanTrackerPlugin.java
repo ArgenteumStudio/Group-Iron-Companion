@@ -65,7 +65,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @PluginDescriptor(
-    enabledByDefault = false,
     name = "Group Iron Companion",
     description = "Private GIM banks, world map and Discord updates",
     tags = {"group", "ironman", "discord", "bank"}
