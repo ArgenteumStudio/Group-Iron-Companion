@@ -29,8 +29,6 @@ saved snapshots or Discord messages. Ask the operator for deletion.
   a skill to see exact XP and XP remaining. Refined forest-green surfaces, shield-style
   initials, clear training states and floating XP drops share the clan's editable
   color palette. Cards adapt to phones; drop animations respect reduced-motion settings.
-  The design is original, inspired by
-  group progression trackers rather than copied from another site's layout or assets.
 - **Live XP drops** show the player, skill icon and exact XP gained as the client
   observes `StatChanged` events. A separate upload worker checks every 250 ms and
   authenticated long-poll viewers wake as soon as the server accepts a batch. Network
@@ -460,11 +458,10 @@ The public website shell and clearly fictional tour remain available without a k
   connected. Closing RuneLite loses unsent client alerts; watch the connection
   status/logs. The backend outbox has a 10,000-event limit and reports failure
   rather than acknowledging events it could not persist.
-- Storage is local JSON for a small private group, not a multi-process database.
-  Run one backend process per data file. This is not hardened for public hosting.
-- This project is in a OneDrive folder. If you do not want cloud-synced credentials
-  or account/chat data, set `MEMBERS_FILE` and `DATA_FILE` to absolute paths outside
-  OneDrive and apply appropriate Windows file permissions. Keep `.env` private too.
+- Storage uses local JSON files and is intended for one small group running one
+  backend process. Do not run multiple processes against the same data file.
+- Keep `.env`, `members.json`, `branding.json` and the backend data directory private.
+  Restrict access to them on the host and include the data file in your backup plan.
 
 ## Live acceptance checklist
 
