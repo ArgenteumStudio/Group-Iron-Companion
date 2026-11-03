@@ -1,7 +1,7 @@
 # Group Iron Companion
 
 An opt-in RuneLite plugin for Group Ironman members to share selected game data
-with their clan's private dashboard and Discord alerts.
+with their group's private dashboard and Discord alerts.
 
 This is an independent project and is not affiliated with Jagex or RuneLite.
 
@@ -11,9 +11,9 @@ with Jagex.
 
 ## Getting started
 
-Your clan must already have a Group Iron Companion server. Ask your clan
+Your group must already have a Group Iron Companion server. Ask your group
 administrator for the server URL, dashboard link and your individual character
-token. Clan members do not need to run a server or build the plugin.
+token. Group members do not need to run a server or build the plugin.
 
 1. Search for **Group Iron Companion** in RuneLite's Plugin Hub and install it
    once it is available.
@@ -22,17 +22,17 @@ token. Clan members do not need to run a server or build the plugin.
 3. Read and accept the connection consent, then enable the connection.
 4. Enable only the sharing options you want. Sharing features are off by default.
 5. Open the sidebar to view group data, or visit the dashboard link provided by
-   your clan.
+   your group.
 
 Share your character token only with its intended player. Do not post it in
-public channels or screenshots, and never use or share the clan owner's key.
-If your token no longer works, contact your clan administrator.
+public channels or screenshots, and never use or share the group owner's key.
+If your token no longer works, contact your group administrator.
 
 ## What you can use
 
 - Share selected stats, bank and group storage data, activity and locations.
 - View your group's shared information on the dashboard.
-- Receive game-event alerts in your clan's configured Discord channels when
+- Receive game-event alerts in your group's configured Discord channels when
   you opt in.
 - Authorized Discord users can use `!stats <player>` for the latest synced stats.
 
@@ -45,12 +45,12 @@ The default sidebar icon is the three-companion shield. Select
 ## Privacy and connection status
 
 Only connect to a server you trust. Your selected data is sent to the server
-provided by your clan, not to RuneLite.
+provided by your group, not to RuneLite.
 
 Changing the server URL or character token discards pending uploads and starts
 a fresh account snapshot. Disabling a sharing option prevents its queued data
 from being sent. Requests already in flight cannot be recalled, and disabling
-sharing does not delete data already stored on the server. Contact your clan
+sharing does not delete data already stored on the server. Contact your group
 administrator about stored data.
 
 Turning the plugin off discards unsent alerts, pending loot and live XP drops.
@@ -72,11 +72,11 @@ These screenshots use fictional group data:
 
 ## Support
 
-For server access, tokens or dashboard permissions, contact your clan
+For server access, tokens or dashboard permissions, contact your group
 administrator. For plugin bugs, use the
-[issue tracker](https://github.com/ArgenteumStudio/MayoClan/issues).
+[issue tracker](https://github.com/ArgenteumStudio/Group-Iron-Companion/issues).
 
-Clan administrators can find the separately maintained server and its
+Group administrators can find the separately maintained server and its
 documentation in
 [GroupIronCompanion-Backend](https://github.com/ArgenteumStudio/GroupIronCompanion-Backend).
 Plugin development instructions are in [CONTRIBUTING.md](CONTRIBUTING.md).
