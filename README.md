@@ -1,8 +1,7 @@
 # BowlsofMayo - the private group pantry
 
 A RuneLite plugin for opt-in Group Ironman tracking, with a private dashboard and Discord alerts.
-This project is not endorsed by Jagex or RuneLite. Plugin Hub review or listing
-does not imply Jagex approval or an exemption from Jagex's rules.
+This project is independently developed and is not endorsed by Jagex or RuneLite.
 
 ## Screenshots
 
@@ -156,49 +155,8 @@ npm ci
 npm test
 ```
 
-By default the Java build resolves the latest released RuneLite client from its Maven repository. To
-compile and test against an existing matching **shaded** RuneLite client jar:
-
-```powershell
-.\build_and_install.ps1 -ClientJar 'C:\path\to\runelite-client\build\libs\client-VERSION-SNAPSHOT-shaded.jar'
-```
-
-Output: `build\libs\bowlsofmayo-0.2.0.jar`. This is not a standalone application.
-Copying a jar into a random `plugins` directory does not install it in stock RuneLite.
-The development launcher explicitly registers the plugin:
-
-```powershell
-.\gradlew.bat run '-PclientJar=C:\path\to\matching-shaded-client.jar'
-```
-
-Development clients may require additional Jagex-account setup. This launcher is
-for development, not evidence of Plugin Hub approval. The standalone Gradle project
-in this repository contains the plugin source; the copy in a RuneLite checkout below
-is only for local testing. Publishing through the Plugin Hub requires hosting this
-standalone source in a public GitHub repository and submitting its marker to
-`runelite/plugin-hub` for review. A submission or listing is not Jagex approval.
-
-### Built-in copy in the local RuneLite master checkout
-
-A separate copy of the plugin Java sources is integrated into the
-`net.runelite.client.plugins.bowlsofmayo` package in a local RuneLite source
-checkout for development testing, where RuneLite discovers it as a built-in plugin
-without changing normal startup. Changes are **not automatically synchronized**
-between the standalone source and the local test copy.
-No backend files or credentials are bundled in the client.
-
-From the RuneLite source checkout, build the client and run the copied feature
-checks with:
-
-```powershell
-.\gradlew.bat :client:shadowJar :client:test --tests net.runelite.client.plugins.bowlsofmayo.ClanTrackerTest --console=plain
-```
-
-In the resulting development client, enable **BowlsofMayo Clan Tracker**, set
-the bridge URL to `http://localhost:4000`, and paste your owner-issued character token
-into its member-token setting. Turn on **Share bank** (and any other sharing
-options you want; all are off by default). Log in as your approved player and open the bank.
-This development build is not Plugin Hub or Jagex approval.
+Gradle builds the plugin jar under `build/libs`. The Node.js tests cover the
+Discord bot and web backend.
 
 ## Local website preview (no credentials or game data)
 
