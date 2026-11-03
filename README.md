@@ -4,6 +4,14 @@ A RuneLite plugin, invite-only dashboard, and Discord bridge for your Group Iron
 This project is not endorsed by Jagex or RuneLite. Plugin Hub review or listing
 does not imply Jagex approval or an exemption from Jagex's rules.
 
+## Screenshots
+
+Settings page captures from the local build:
+
+| Group and website | Website colors | Discord message styles | Preview and save |
+| --- | --- | --- | --- |
+| ![Group and website settings](screenshots/settings-group-website.png) | ![Website color settings](screenshots/settings-website-colors.png) | ![Discord message titles and drop tiers](screenshots/settings-discord-titles-tiers.png) | ![Discord preview and save controls](screenshots/settings-preview-save.png) |
+
 ## Features
 
 ### Privacy and explicit opt-in
