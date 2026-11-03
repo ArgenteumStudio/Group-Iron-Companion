@@ -1,4 +1,4 @@
-# BowlsofMayo
+# Group Iron Companion
 
 An opt-in RuneLite plugin for Group Ironman tracking, with a self-hosted web
 dashboard and Discord bot.
@@ -55,7 +55,7 @@ newer; Java 11 or newer is only needed to build the plugin.
 4. In the configured Discord channel, the owner runs `!verify` and receives a
    private key by DM. Enter it on the web panel, then use **Manage group** to
    create a separate character token for each player.
-5. In RuneLite, enable **BowlsofMayo Clan Tracker**, set the backend URL and the
+5. In RuneLite, enable **Group Iron Companion**, set the backend URL and the
    player's token. Read and accept the connection consent, then enable only the
    sharing options you want.
 

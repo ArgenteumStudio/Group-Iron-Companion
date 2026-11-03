@@ -308,7 +308,7 @@ export function keyMessage({ key, characters = [] }, now = Date.now()) {
       title: 'Your private access key',
       description: `${linked}\n\`\`\`\n${key}\n\`\`\``,
       fields: [
-        { name: '1. RuneLite plugin', value: 'Configuration → **BowlsofMayo Clan Tracker** plugin → paste into **Member token**.' },
+        { name: '1. RuneLite plugin', value: 'Configuration → **Group Iron Companion** plugin → paste into **Member token**.' },
         { name: '2. Group website', value: 'Paste into the **Access key** field when prompted.' },
         { name: 'Keep it secret', value: 'Anyone with this key can view group data and sync as you. ' +
           'Your previous key, if any, stops working now. Leaving the Discord server revokes it. ' +

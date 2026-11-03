@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
 
 @PluginDescriptor(
     enabledByDefault = false,
-    name = "BowlsofMayo Clan Tracker",
+    name = "Group Iron Companion",
     description = "Private GIM banks, world map and Discord updates",
     tags = {"group", "ironman", "discord", "bank"}
 )
@@ -871,7 +871,7 @@ public class ClanTrackerPlugin extends Plugin
                 return;
             }
             NavigationButton previous = button;
-            button = NavigationButton.builder().tooltip("BowlsofMayo")
+            button = NavigationButton.builder().tooltip("Group Iron Companion")
                 .icon(icon).priority(7).panel(panel).build();
             if (previous != null)
             {
