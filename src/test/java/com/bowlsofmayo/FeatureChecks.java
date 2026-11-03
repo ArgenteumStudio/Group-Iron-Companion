@@ -80,11 +80,11 @@ public final class FeatureChecks
         paint.setColor(java.awt.Color.RED);
         paint.fillRect(20, 10, 160, 30);
         paint.dispose();
-        BufferedImage icon = ClanTrackerPlugin.iconImage(wide);
+        BufferedImage icon = TrackerImages.iconImage(wide);
         assert icon.getWidth() == icon.getHeight() : "Sidebar icon should be square";
         assert (icon.getRGB(0, 0) >>> 24) == 0 : "Logo should be letterboxed, not stretched";
         assert (icon.getRGB(icon.getWidth() / 2, icon.getHeight() / 2) >>> 24) != 0;
-        assert ClanTrackerPlugin.iconImage(new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB)) != null;
+        assert TrackerImages.iconImage(new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB)) != null;
         System.out.println("Java feature checks passed (KC parsing, chat filtering, quest transitions, banks, world map, JSON contract, transport).");
     }
 
@@ -124,6 +124,13 @@ public final class FeatureChecks
             assert !notice.isVisible() : "Connection errors must not restore the consent notice";
             panel.setConnectionEnabled(false);
             assert notice.isVisible() : "Consent notice must return when connection is disabled";
+            panel.setStatus("Live XP not synced: connection unavailable\nAlerts waiting for retry");
+            javax.swing.JTextArea status = (javax.swing.JTextArea) header.getComponent(0);
+            panel.doLayout();
+            header.doLayout();
+            assert status.getLineWrap() && status.getWrapStyleWord();
+            assert status.getPreferredSize().width <= header.getWidth() : "Status messages must fit the sidebar";
+            assert status.getHeight() >= status.getPreferredSize().height : "Multiple statuses must not be clipped";
         });
     }
 
@@ -171,6 +178,7 @@ public final class FeatureChecks
                 return true;
             }
         });
+        set(plugin, "running", true);
         set(plugin, "account", "Test Player");
         Field queued = ClanTrackerPlugin.class.getDeclaredField("events");
         queued.setAccessible(true);
@@ -397,7 +405,7 @@ public final class FeatureChecks
             Gson gson = new Gson();
             try
             {
-                tracker.send(bridge, gson, now);
+                tracker.send(bridge, gson, tracker.batch(now));
                 throw new AssertionError("Failed upload must throw");
             }
             catch (java.io.IOException expected)
@@ -405,7 +413,7 @@ public final class FeatureChecks
                 assert tracker.hasPending() : "Failed uploads must remain queued";
             }
             status[0] = 200;
-            tracker.send(bridge, gson, now);
+            tracker.send(bridge, gson, tracker.batch(now));
             assert !tracker.hasPending() : "Successful upload must acknowledge drops";
             assert body[0].contains(id) && body[0].contains("\"amount\":35");
             tracker.baseline(net.runelite.api.Skill.FISHING, 1000);

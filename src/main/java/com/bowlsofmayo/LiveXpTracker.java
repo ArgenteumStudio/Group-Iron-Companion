@@ -33,6 +33,7 @@ final class LiveXpTracker
     {
         String username;
         List<Drop> drops = new ArrayList<>();
+        transient int expired;
     }
 
     void baseline(Skill skill, int xp)
@@ -104,6 +105,7 @@ final class LiveXpTracker
             LOG.warn("Expired {} unsent live XP drops; historical XP still syncs via snapshots", expired);
         }
         Batch batch = new Batch();
+        batch.expired = expired;
         for (Drop drop : pending)
         {
             if (batch.username == null)
@@ -122,9 +124,8 @@ final class LiveXpTracker
         return batch;
     }
 
-    void send(BridgeClient bridge, com.google.gson.Gson gson, long now) throws IOException
+    void send(BridgeClient bridge, com.google.gson.Gson gson, Batch batch) throws IOException
     {
-        Batch batch = batch(now);
         if (!batch.drops.isEmpty())
         {
             bridge.post("/v1/xp-drops", gson.toJson(batch));

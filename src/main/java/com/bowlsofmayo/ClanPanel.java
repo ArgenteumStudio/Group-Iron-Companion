@@ -30,7 +30,7 @@ public class ClanPanel extends PluginPanel
 {
     private static final String GROUP_STORAGE = "Group storage";
     private final ItemManager itemManager;
-    private final JLabel status = new JLabel("Configure bridge URL and member token");
+    private final JTextArea status = new JTextArea("Configure bridge URL and member token");
     private final JTextArea privacy = new JTextArea("Connection is opt-in. Uploads go to " +
         "your configured server operator, who can read, store and share them. " +
         "Alerts may also go to Discord. Disabling does not delete past data.");
@@ -49,6 +49,13 @@ public class ClanPanel extends PluginPanel
         setLayout(new BorderLayout(0, 8));
         JPanel header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        status.setFont(new JLabel().getFont());
+        status.setForeground(new JLabel().getForeground());
+        status.setOpaque(false);
+        status.setEditable(false);
+        status.setFocusable(false);
+        status.setLineWrap(true);
+        status.setWrapStyleWord(true);
         privacy.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
         privacy.setFont(status.getFont());
         privacy.setForeground(status.getForeground());
@@ -66,6 +73,7 @@ public class ClanPanel extends PluginPanel
         header.add(new JLabel("Search bank"));
         header.add(search);
         header.add(note);
+        setStatus(status.getText());
         for (java.awt.Component component : header.getComponents())
         {
             ((javax.swing.JComponent) component).setAlignmentX(LEFT_ALIGNMENT);
@@ -96,6 +104,10 @@ public class ClanPanel extends PluginPanel
     {
         status.setText(message);
         status.setToolTipText(message.isEmpty() ? null : message);
+        status.setVisible(!message.isEmpty());
+        status.setSize(PANEL_WIDTH - 2 * BORDER_OFFSET, Short.MAX_VALUE);
+        status.setMaximumSize(status.getPreferredSize());
+        revalidate();
     }
 
     void update(TrackerData.Group group)

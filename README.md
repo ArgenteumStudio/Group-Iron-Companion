@@ -90,11 +90,29 @@ being sent; changing bank sharing requires reopening the bank or group storage.
 Requests already in flight cannot be recalled, and disabling sharing does not
 delete data already stored on the server.
 
+Turning the plugin off discards unsent alerts, pending loot and live XP drops.
+Turning it back on starts fresh, even if the server and token are unchanged.
+Alerts already accepted by the backend can still finish posting to Discord.
+
 Alerts rejected with HTTP 400, 403, 413 or 422 are discarded with a warning.
 Temporary failures, including rate limits and server errors, keep alerts queued
 for retry without blocking group refreshes.
 
+The sidebar tracks group, live XP and alert upload errors independently. A group
+refresh does not clear a live XP error; successful XP delivery clears its own
+error. Unsent live drops that expire are explicitly reported as not delivered
+live. Optional map/logo download failures retain cached/default images and do
+not discard successfully downloaded group data. Optional bank-icon upload
+failures also leave member/bank data available and retry on the next sync.
+The most recent live-XP expiration notice remains visible across successful
+retries until live-XP sharing or connection/access settings change, or the plugin
+is restarted; recovery does not imply the expired drops were delivered.
+
 ## Development
+
+The plugin coordinates RuneLite events and lifecycle. Upload filtering/retries
+live in `UploadCoordinator`, status ownership in `SyncStatus`, bank collection
+in `BankSnapshots`, and image decoding/scaling in `TrackerImages`.
 
 Build and check the plugin, then run the backend tests:
 
