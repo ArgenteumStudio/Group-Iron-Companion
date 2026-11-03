@@ -54,8 +54,8 @@ public interface ClanTrackerConfig extends Config
     default boolean questAlerts() { return false; }
 
     @ConfigItem(keyName = "sidebarIcon", name = "Sidebar icon",
-        description = "Icon for the sidebar button. Group logo uses the logo set on your website", position = 11)
-    default SidebarIcon sidebarIcon() { return SidebarIcon.GROUP_LOGO; }
+        description = "Defaults to the companion shield. Group logo uses the logo set on your website", position = 11)
+    default SidebarIcon sidebarIcon() { return SidebarIcon.COMPANION_SHIELD; }
 
     @Range(min = 0)
     @ConfigItem(keyName = "sidebarItemId", name = "Custom item ID",

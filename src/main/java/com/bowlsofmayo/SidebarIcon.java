@@ -2,6 +2,7 @@ package com.bowlsofmayo;
 
 public enum SidebarIcon
 {
+    COMPANION_SHIELD("Companion shield", -1, 1),
     GROUP_LOGO("Group logo", -1, 1),
     DOT("Simple dot", -1, 1),
     BOWL("Bowl", 1923, 1),

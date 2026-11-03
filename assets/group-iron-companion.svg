@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Group Iron Companion</title>
+  <desc>Three steel-helmed companions with a crimson mantle inside a gold shield.</desc>
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff0b0"/>
+      <stop offset=".35" stop-color="#e6b960"/>
+      <stop offset=".65" stop-color="#a56b26"/>
+      <stop offset="1" stop-color="#f8d889"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#353c49"/>
+      <stop offset="1" stop-color="#111820"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2=".6">
+      <stop stop-color="#f3f0dc"/>
+      <stop offset=".38" stop-color="#aeb6bd"/>
+      <stop offset=".52" stop-color="#e4e6df"/>
+      <stop offset=".55" stop-color="#88939f"/>
+      <stop offset="1" stop-color="#414d60"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f16d51"/>
+      <stop offset=".45" stop-color="#be3737"/>
+      <stop offset="1" stop-color="#571e30"/>
+    </linearGradient>
+    <g id="companion" stroke="#10151c" stroke-width="9" stroke-linejoin="round">
+      <path d="M66 304 76 251 114 230 152 251 167 313 117 343Z" fill="#596577"/>
+      <path d="m76 251 38-21-19 60-29 14Z" fill="#9ba5ad" stroke="none"/>
+      <path d="m114 124 48 34 8 68-56 53-50-53 8-68Z" fill="url(#steel)"/>
+      <path d="m114 139-30 27-9 49 14-50Z" fill="#fff5da" stroke="none"/>
+      <path d="m79 187 35 14 39-14v19l-28 12-4 42-15 10-4-52-23-12Z" fill="#10151c" stroke="none"/>
+    </g>
+  </defs>
+  <path d="M256 15C188 59 111 88 34 108v191c0 74 105 145 222 201 117-56 222-127 222-201V108C401 88 324 59 256 15Z"
+        fill="url(#gold)" stroke="#161a21" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M256 42C190 83 120 109 55 126v170c0 61 91 125 201 180 110-55 201-119 201-180V126C392 109 322 83 256 42Z"
+        fill="url(#shield)" stroke="#ffe0a0" stroke-opacity=".4" stroke-width="3"/>
+  <path d="M256 62v389C155 399 76 342 76 294V143c60-17 121-40 180-81Z" fill="#fff" opacity=".035"/>
+  <use href="#companion"/>
+  <use href="#companion" transform="translate(512 0) scale(-1 1)"/>
+  <path d="m105 347 42-68 109-35 109 35 42 68-55 51-96 54-96-54Z"
+        fill="#252e3c" stroke="#10151c" stroke-width="12" stroke-linejoin="round"/>
+  <path d="m147 286-34 60 41 35 37-73Z" fill="#778491"/>
+  <path d="m365 286 34 60-41 35-37-73Z" fill="#48576b"/>
+  <path d="m170 254 86 31 86-31 34 47-49 61-71 43-71-43-49-61Z"
+        fill="url(#red)" stroke="#19171f" stroke-width="10" stroke-linejoin="round"/>
+  <path d="m150 300 106 75 106-75-45 63-61 36-61-36Z" fill="#681e2c"/>
+  <path d="m170 265 86 31 85-31-85 58Z" fill="#fa8a66" opacity=".55"/>
+  <path d="m256 73 77 57 16 103-35 63-58 41-58-41-35-63 16-103Z"
+        fill="url(#steel)" stroke="#0c121a" stroke-width="12" stroke-linejoin="round"/>
+  <path d="m256 87-64 49-13 88 22-81Z" fill="#fff7df"/>
+  <path d="m256 89 6 95-6 129-8-128Z" fill="#f3efdb" opacity=".7"/>
+  <path d="m190 173 66 27 66-27-2 26-51 26-5 93-8 9-9-9-5-93-50-26Z" fill="#0b121b"/>
+  <path d="m198 232 34 18 5 54-29-24Z" fill="#dbe1de" opacity=".22"/>
+  <path d="m280 250 34-18-10 48-29 24Z" fill="#142133" opacity=".35"/>
+  <path d="m256 454 10 5-10 7-10-7Z" fill="#ffe2a0"/>
+</svg>

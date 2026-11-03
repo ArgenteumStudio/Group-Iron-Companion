@@ -60,6 +60,7 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +76,7 @@ public class ClanTrackerPlugin extends Plugin
     private static final long LOGO_REFRESH_MILLIS = TimeUnit.MINUTES.toMillis(5);
     private static final int LOGO_LIMIT = 5 * 1024 * 1024;
     private static final int ICON_SIZE = 32;
+    private static final BufferedImage COMPANION_ICON = ImageUtil.loadImageResource(ClanTrackerPlugin.class, "companion-icon.png");
 
     @Inject private Client client;
     @Inject private ClientThread clientThread;
@@ -133,7 +135,7 @@ public class ClanTrackerPlugin extends Plugin
         running = true;
         logoFetchedAt = 0;
         mapIconFetchedAt = 0;
-        setSidebarIcon(marker());
+        setSidebarIcon(COMPANION_ICON);
         refreshSidebarIcon();
         int currentGeneration = ++generation;
         worker = Executors.newSingleThreadScheduledExecutor(task -> {
@@ -792,10 +794,15 @@ public class ClanTrackerPlugin extends Plugin
             return;
         }
         SidebarIcon choice = config.sidebarIcon();
+        if (choice == SidebarIcon.COMPANION_SHIELD)
+        {
+            setSidebarIcon(COMPANION_ICON);
+            return;
+        }
         if (choice == SidebarIcon.GROUP_LOGO)
         {
             BufferedImage current = logo;
-            setSidebarIcon(current != null ? current : marker());
+            setSidebarIcon(current != null ? current : COMPANION_ICON);
             return;
         }
         if (choice == SidebarIcon.DOT)

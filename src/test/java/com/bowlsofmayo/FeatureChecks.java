@@ -50,6 +50,7 @@ public final class FeatureChecks
         assert ClanPanel.quantity(10000000).equals("10M");
         assert ClanPanel.quantity(Integer.MAX_VALUE).equals("2147M");
         checkConnectionNotice();
+        checkCompanionIcon();
 
         Gson gson = new GsonBuilder().serializeNulls().create();
         TrackerData.Member member = new TrackerData.Member();
@@ -84,6 +85,22 @@ public final class FeatureChecks
         assert (icon.getRGB(icon.getWidth() / 2, icon.getHeight() / 2) >>> 24) != 0;
         assert ClanTrackerPlugin.iconImage(new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB)) != null;
         System.out.println("Java feature checks passed (KC parsing, chat filtering, quest transitions, banks, world map, JSON contract, transport).");
+    }
+
+    private static void checkCompanionIcon() throws Exception
+    {
+        assert new ClanTrackerConfig() {}.sidebarIcon() == SidebarIcon.COMPANION_SHIELD;
+        assert SidebarIcon.valueOf("GROUP_LOGO") == SidebarIcon.GROUP_LOGO : "Existing icon preferences must remain valid";
+        BufferedImage sidebar = net.runelite.client.util.ImageUtil.loadImageResource(ClanTrackerPlugin.class, "companion-icon.png");
+        BufferedImage hub = javax.imageio.ImageIO.read(new java.io.File("icon.png"));
+        assert sidebar.getWidth() == 32 && sidebar.getHeight() == 32 : "Sidebar icon must be 32 x 32";
+        assert hub.getWidth() == 48 && hub.getHeight() == 48 : "Hub icon must fit the 48 x 72 limit";
+        for (BufferedImage image : Arrays.asList(sidebar, hub))
+        {
+            assert image.getColorModel().hasAlpha() : "Icons must support transparency";
+            assert (image.getRGB(0, 0) >>> 24) == 0 : "Icon corners must be transparent";
+            assert (image.getRGB(image.getWidth() / 2, image.getHeight() / 2) >>> 24) == 255 : "Shield center must be opaque";
+        }
     }
 
     private static void checkConnectionNotice() throws Exception

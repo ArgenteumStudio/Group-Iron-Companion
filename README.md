@@ -73,6 +73,11 @@ Use the web panel to view shared group data and manage members/settings. The bot
 posts enabled game alerts to its configured Discord channel; authorized Discord
 users can use `!stats <player>` for the latest synced stats.
 
+The Plugin Hub icon and default sidebar icon use the three-companion shield.
+Existing sidebar choices are preserved; select **Sidebar icon > Companion shield**
+to switch back from a group logo or item icon. The editable artwork is in
+[`assets/group-iron-companion.svg`](assets/group-iron-companion.svg).
+
 Local use defaults to `http://localhost:4000`. Remote plugin connections require
 HTTPS; provide TLS through your hosting platform or another HTTPS front end, and
 keep the backend listener private. Keep `.env`, `members.json`, `branding.json`
