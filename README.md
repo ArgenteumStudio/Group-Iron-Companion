@@ -12,6 +12,12 @@ Settings page captures from the local build:
 | --- | --- | --- | --- |
 | ![Group and website settings](screenshots/settings-group-website.png) | ![Website color settings](screenshots/settings-website-colors.png) | ![Discord message titles and drop tiers](screenshots/settings-discord-titles-tiers.png) | ![Discord preview and save controls](screenshots/settings-preview-save.png) |
 
+Fictional demo captures:
+
+| Overview | Banks | Locations and activity | Full-page map |
+| --- | --- | --- | --- |
+| ![Fictional group overview](screenshots/demo-overview.png) | ![Fictional shared banks](screenshots/demo-banks.png) | ![Fictional locations and activity](screenshots/demo-locations-activity.png) | ![Fictional full-page world map](screenshots/demo-world-map.png) |
+
 ## Features
 
 ### Privacy and explicit opt-in
