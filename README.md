@@ -1,6 +1,6 @@
 # BowlsofMayo - the private group pantry
 
-A RuneLite plugin, invite-only dashboard, and Discord bridge for your Group Ironman team.
+A RuneLite plugin for opt-in Group Ironman tracking, with a private dashboard and Discord alerts.
 This project is not endorsed by Jagex or RuneLite. Plugin Hub review or listing
 does not imply Jagex approval or an exemption from Jagex's rules.
 
