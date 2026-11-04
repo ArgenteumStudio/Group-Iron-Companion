@@ -16,6 +16,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.Quest;
 import net.runelite.api.WorldView;
@@ -23,6 +24,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
@@ -38,7 +40,7 @@ public final class FeatureChecks
         checkKill("Your subdued Wintertodt count is: 45.", "Wintertodt", 45);
         checkKill("Your Vorkath kill count is: 1.", "Vorkath", 1);
         checkKill("Your Lunar Chest count is: 12.", "Lunar Chest", 12);
-        assert FeatureParser.isChestCount("Lunar Chest") : "Lunar Chest KC belongs on the loot drop, not boss kills";
+        assert FeatureParser.isChestCount("Lunar Chest");
         assert !FeatureParser.isChestCount("Eclipse Moon") && !FeatureParser.isChestCount("Brutus");
         assert "Varrock Hard".equals(FeatureParser.parseDiary(
             "Congratulations! You have completed all of the hard tasks in the Varrock area. Speak to Toby to claim your reward."));
@@ -47,8 +49,8 @@ public final class FeatureChecks
         assert FeatureParser.parseDiary("Well done! You have completed an easy task in the Varrock area.") == null;
         int[] tabs = {2, 0, 3, 0, 0, 0, 0, 0, 0};
         assert BankSnapshots.tabFor(0, tabs) == 1 && BankSnapshots.tabFor(1, tabs) == 1;
-        assert BankSnapshots.tabFor(2, tabs) == 3 && BankSnapshots.tabFor(4, tabs) == 3 : "Empty tabs are skipped";
-        assert BankSnapshots.tabFor(5, tabs) == 0 : "Items after the last tab are untabbed";
+        assert BankSnapshots.tabFor(2, tabs) == 3 && BankSnapshots.tabFor(4, tabs) == 3;
+        assert BankSnapshots.tabFor(5, tabs) == 0;
         checkKill("Your Barrows chest count is: 250.", "Barrows chest", 250);
         assert FeatureParser.sourceKey("Barrows chest").equals(FeatureParser.sourceKey("Barrows"));
         assert FeatureParser.parseKill("Your Ape Atoll Agility lap count is: 5.") == null;
@@ -66,6 +68,17 @@ public final class FeatureChecks
         assert ClanPanel.quantity(Integer.MAX_VALUE).equals("2147M");
         checkConnectionNotice();
         checkCompanionIcon();
+        assert new ClanTrackerConfig() {}.gimStorageReminder() : "GIM storage reminder should stay enabled by default";
+        assert new ClanTrackerConfig() {}.trackDeathCoffer() : "Death's Coffer tracker should be enabled by default";
+        assert new ClanTrackerConfig() {}.notifyDeathCofferLow() : "Death's Coffer low balance notification should be enabled by default";
+        assert new ClanTrackerConfig() {}.deathCofferLowThreshold() == 10000 : "Death's Coffer threshold should default to 10,000 GP";
+        assert ClanTrackerPlugin.crossedDeathCofferThreshold(10001, 10000, 10000);
+        assert !ClanTrackerPlugin.crossedDeathCofferThreshold(10000, 9000, 10000);
+        assert !ClanTrackerPlugin.crossedDeathCofferThreshold(9000, 8000, 10000);
+        assert !ClanTrackerPlugin.crossedDeathCofferThreshold(Integer.MIN_VALUE, 9000, 10000);
+        checkGroupStorageWithdrawals();
+        checkLogoutAction();
+        DeathCofferChecks.run();
 
         Gson gson = new GsonBuilder().serializeNulls().create();
         TrackerData.Member member = new TrackerData.Member();
@@ -88,6 +101,7 @@ public final class FeatureChecks
         rejects(() -> new BridgeClient(http, "https://example.com", ""));
         rejects(() -> new BridgeClient(http, "https://user:pass@example.com", "a".repeat(48)));
         checkEventHandlers();
+        SidebarChecks.run();
         checkLiveXp();
         SyncChecks.run();
         BufferedImage wide = new BufferedImage(200, 50, BufferedImage.TYPE_INT_ARGB);
@@ -119,6 +133,80 @@ public final class FeatureChecks
         }
     }
 
+    private static void checkGroupStorageWithdrawals()
+    {
+        GroupStorageWithdrawals withdrawals = new GroupStorageWithdrawals();
+        withdrawals.updateStorage(container(4151, 5));
+        withdrawals.updateInventory(93, container(4151, 1));
+
+        withdrawals.updateStorage(container(4151, 3));
+        withdrawals.updateInventory(93, container(4151, 3));
+        assert withdrawals.hasItemsToReturn() : "Storage withdrawals still in inventory should trigger a warning";
+        assert withdrawals.itemsToReturn().get(4151) == 2L : "Warning should report remaining item quantity";
+
+        withdrawals.updateInventory(93, container(4151, 2));
+        assert withdrawals.hasItemsToReturn() : "Warn while any withdrawn quantity remains in inventory";
+        withdrawals.updateStorage(container(4151, 4));
+        withdrawals.updateInventory(93, container(4151, 1));
+        assert !withdrawals.hasItemsToReturn() : "Returning the withdrawn item should clear the warning";
+
+        withdrawals.updateStorage(container(4151, 2));
+        for (int i = 0; i < 5; i++)
+        {
+            withdrawals.finishTick();
+        }
+        assert !withdrawals.hasItemsToReturn() : "Another member's withdrawal must not count without an inventory increase";
+
+        withdrawals.updateInventory(93, container(4151, 2, 995, 10));
+        withdrawals.finishTick();
+        assert !withdrawals.hasItemsToReturn() : "Inventory gains alone must not count as group storage withdrawals";
+        withdrawals.clear();
+        assert !withdrawals.hasItemsToReturn() : "Account resets must clear tracked withdrawals";
+
+        withdrawals.updateStorage(container(4151, 5));
+        withdrawals.updateInventory(93, container(4151, 1));
+        withdrawals.updateStorage(container(4151, 3));
+        withdrawals.updateInventory(660, container(4151, 1));
+        withdrawals.updateInventory(660, container(4151, 3));
+        assert withdrawals.hasItemsToReturn() : "Group storage withdrawal should be tracked in its inventory container";
+        withdrawals.updateInventory(93, container(4151, 3));
+        assert withdrawals.hasItemsToReturn() : "Switching back to the standard inventory must retain the withdrawal";
+        withdrawals.updateInventory(93, container(4151, 1));
+        assert !withdrawals.hasItemsToReturn() : "Returning the withdrawn item should clear after a container switch";
+    }
+
+    private static ItemContainer container(int... items)
+    {
+        Item[] contents = new Item[items.length / 2];
+        for (int i = 0; i < items.length; i += 2)
+        {
+            final int id = items[i];
+            final int quantity = items[i + 1];
+            contents[i / 2] = new Item(id, quantity);
+        }
+        return (ItemContainer) Proxy.newProxyInstance(ItemContainer.class.getClassLoader(),
+            new Class<?>[]{ItemContainer.class}, (proxy, method, arguments) -> {
+                if (method.getName().equals("getItems")) return contents;
+                throw new AssertionError("Unexpected container access: " + method.getName());
+            });
+    }
+
+    private static void checkLogoutAction()
+    {
+        MenuEntry entry = (MenuEntry) Proxy.newProxyInstance(MenuEntry.class.getClassLoader(),
+            new Class<?>[]{MenuEntry.class}, (proxy, method, arguments) -> {
+                if (method.getName().equals("getOption")) return "Logout";
+                return null;
+            });
+        assert ClanTrackerPlugin.isLogoutAction(new MenuOptionClicked(entry));
+        MenuEntry other = (MenuEntry) Proxy.newProxyInstance(MenuEntry.class.getClassLoader(),
+            new Class<?>[]{MenuEntry.class}, (proxy, method, arguments) -> {
+                if (method.getName().equals("getOption")) return "Log out later";
+                return null;
+            });
+        assert !ClanTrackerPlugin.isLogoutAction(new MenuOptionClicked(other));
+    }
+
     private static void checkConnectionNotice() throws Exception
     {
         javax.swing.SwingUtilities.invokeAndWait(() -> {
@@ -141,6 +229,22 @@ public final class FeatureChecks
             assert notice.isVisible() : "Consent notice must return when connection is disabled";
             panel.setStatus("Live XP not synced: connection unavailable\nAlerts waiting for retry");
             javax.swing.JTextArea status = (javax.swing.JTextArea) header.getComponent(0);
+            javax.swing.JPanel trackerCard = (javax.swing.JPanel) header.getComponent(2);
+            javax.swing.JPanel trackerDetails = (javax.swing.JPanel) trackerCard.getComponent(1);
+            javax.swing.JLabel coffer = (javax.swing.JLabel) trackerDetails.getComponent(1);
+            javax.swing.JLabel threshold = (javax.swing.JLabel) trackerDetails.getComponent(3);
+            javax.swing.JButton bankToggle = (javax.swing.JButton) header.getComponent(4);
+            javax.swing.JComboBox<?> bankSelector = (javax.swing.JComboBox<?>) header.getComponent(6);
+            javax.swing.JScrollPane bankScroll = (javax.swing.JScrollPane) panel.getComponent(1);
+            panel.setDeathCofferValue(1234567);
+            panel.setDeathCofferThreshold(10000);
+            assert coffer.getText().equals("1,234,567 gp");
+            assert threshold.getText().equals("Low alert at or below 10,000 gp");
+            bankToggle.doClick();
+            assert !bankSelector.isVisible() && !bankScroll.isVisible();
+            assert coffer.isVisible() : "Collapsing bank snapshots must leave the coffer tracker visible";
+            bankToggle.doClick();
+            assert bankSelector.isVisible() && bankScroll.isVisible();
             panel.doLayout();
             header.doLayout();
             assert status.getLineWrap() && status.getWrapStyleWord();
@@ -194,6 +298,7 @@ public final class FeatureChecks
             }
         });
         set(plugin, "running", true);
+        set(plugin, "configManager", TestServices.configManager());
         set(plugin, "account", "Test Player");
         Field queued = ClanTrackerPlugin.class.getDeclaredField("events");
         queued.setAccessible(true);
@@ -214,6 +319,17 @@ public final class FeatureChecks
         plugin.onChatMessage(chat(ChatMessageType.GAMEMESSAGE, "", "Your Zulrah kill count is: <col=ff0000>127</col>."));
         assert events.size() == 1 : "Repeated KC should not create multiple alerts";
         events.clear();
+        plugin.onChatMessage(chat(ChatMessageType.GAMEMESSAGE, "", "Your Lunar Chest count is: 12."));
+        assert events.isEmpty() : "Lunar Chest must not create a boss alert";
+        plugin.onChatMessage(chat(ChatMessageType.GAMEMESSAGE, "",
+            "Congratulations! You have completed all of the hard tasks in the Varrock area."));
+        assert events.size() == 1;
+        TrackerData.Event diary = (TrackerData.Event) events.poll();
+        assert diary.type.equals("diary") && diary.diary.equals("Varrock Hard");
+        assert UploadCoordinator.eventEnabled(new ClanTrackerConfig() {
+            public boolean questAlerts() { return true; }
+        }, diary);
+        assert !UploadCoordinator.eventEnabled(new ClanTrackerConfig() {}, diary);
 
         int[] currentQuest = new int[1];
         int[] completedQuest = {-1};
@@ -252,6 +368,10 @@ public final class FeatureChecks
                 if (method.getName().equals("getGameState"))
                 {
                     return GameState.LOGGED_IN;
+                }
+                if (method.getName().equals("getWidget"))
+                {
+                    return null;
                 }
                 if (method.getName().equals("getWorld"))
                 {
@@ -322,6 +442,12 @@ public final class FeatureChecks
         assert captured.bankUpdatedAt > 0;
         assert captured.stats.size() >= 23;
         assert captured.questPoints == 40 : "Quest points should be shared";
+        assert captured.killCounts.equals(java.util.Map.of("zulrah", 127)) : "Only positive saved KCs should be shared";
+        assert UploadCoordinator.snapshotForUpload(new ClanTrackerConfig() {}, captured).killCounts == null :
+            "Saved KCs require boss-alert consent";
+        assert UploadCoordinator.snapshotForUpload(new ClanTrackerConfig() {
+            public boolean bossAlerts() { return true; }
+        }, captured).killCounts.equals(captured.killCounts);
         assert captured.position == null : "Location sharing is disabled";
         plugin.onItemContainerChanged(new ItemContainerChanged(InventoryID.GROUP_STORAGE_INV.getId(), emptyBank));
         assert get(plugin, "snapshot") == captured : "Inventory shown beside group storage is not shared storage";

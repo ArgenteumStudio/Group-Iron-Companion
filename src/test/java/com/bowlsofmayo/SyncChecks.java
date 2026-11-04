@@ -593,6 +593,7 @@ final class SyncChecks
             set(plugin, "config", settings);
             set(plugin, "gson", new GsonBuilder().serializeNulls().create());
             set(plugin, "runeLiteGson", new GsonBuilder().create());
+            set(plugin, "configManager", TestServices.configManager());
             set(plugin, "http", new OkHttpClient());
             set(plugin, "clientThread", new ClientThread());
             set(plugin, "mapManager", new net.runelite.client.ui.overlay.worldmap.WorldMapPointManager());
@@ -739,7 +740,7 @@ final class SyncChecks
                 boolean completed = task.getAsBoolean();
                 assert completed : "Unexpected deferred client task";
             }
-            SwingUtilities.invokeAndWait(() -> { });
+            SwingUtilities.invokeAndWait(() -> {});
         }
 
         public void close() throws IOException

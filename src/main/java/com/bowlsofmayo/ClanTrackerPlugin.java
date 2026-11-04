@@ -15,12 +15,17 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.InventoryID;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
@@ -28,16 +33,21 @@ import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.Notifier;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.plugins.Plugin;
@@ -62,6 +72,11 @@ public class ClanTrackerPlugin extends Plugin
 {
     private static final Logger LOG = LoggerFactory.getLogger(ClanTrackerPlugin.class);
     private static final long LOGO_REFRESH_MILLIS = TimeUnit.MINUTES.toMillis(5);
+    private static final String DEATH_COFFER_BALANCE_KEY = "deathCofferLastBalance";
+    private static final Pattern DEATH_COFFER_TEXT = Pattern.compile("^Coffer: (Empty|[0-9][0-9,]* coins?)$");
+    private static final int[] BANK_TAB_VARBITS = {
+        VarbitID.BANK_TAB_1, VarbitID.BANK_TAB_2, VarbitID.BANK_TAB_3, VarbitID.BANK_TAB_4, VarbitID.BANK_TAB_5,
+        VarbitID.BANK_TAB_6, VarbitID.BANK_TAB_7, VarbitID.BANK_TAB_8, VarbitID.BANK_TAB_9};
     private static final BufferedImage COMPANION_ICON = ImageUtil.loadImageResource(ClanTrackerPlugin.class, "companion-icon.png");
 
     @Inject private Client client;
@@ -71,16 +86,14 @@ public class ClanTrackerPlugin extends Plugin
     @Inject private ClientToolbar toolbar;
     @Inject private ItemManager itemManager;
     @Inject private ConfigManager configManager;
-    private static final int[] BANK_TAB_VARBITS = {
-        VarbitID.BANK_TAB_1, VarbitID.BANK_TAB_2, VarbitID.BANK_TAB_3, VarbitID.BANK_TAB_4, VarbitID.BANK_TAB_5,
-        VarbitID.BANK_TAB_6, VarbitID.BANK_TAB_7, VarbitID.BANK_TAB_8, VarbitID.BANK_TAB_9};
-    private final Map<Integer, Boolean> tradeableCache = new HashMap<>();
+    @Inject private Notifier notifier;
     @Inject private WorldMapPointManager mapManager;
     @Inject private okhttp3.OkHttpClient http;
 
     private final ConcurrentLinkedQueue<TrackerData.Event> events = new ConcurrentLinkedQueue<>();
     private final Map<Quest, QuestState> quests = new HashMap<>();
     private final Map<String, FeatureParser.Kill> kills = new HashMap<>();
+    private final Map<Integer, Boolean> tradeableCache = new HashMap<>();
     private final List<PendingLoot> loot = new ArrayList<>();
     private volatile TrackerData.Member snapshot;
     private volatile boolean running;
@@ -107,10 +120,15 @@ public class ClanTrackerPlugin extends Plugin
     private List<TrackerData.BankItem> groupStorage;
     private long groupStorageUpdatedAt;
     private int ticks;
+    private int deathCofferValue = Integer.MIN_VALUE;
+    private String deathCofferProfile;
+    private String unrecognizedCofferText;
     private boolean questsReady;
     private boolean questsDirty = true;
     private List<TrackerData.Member> groupMembers = Collections.emptyList();
     private final BankSnapshots bankSnapshots = new BankSnapshots();
+    private final GroupStorageWithdrawals groupStorageWithdrawals = new GroupStorageWithdrawals();
+    private volatile boolean approvedLogout;
 
     @Provides
     ClanTrackerConfig provideConfig(ConfigManager manager)
@@ -124,6 +142,8 @@ public class ClanTrackerPlugin extends Plugin
         gson = runeLiteGson.newBuilder().serializeNulls().create();
         panel = new ClanPanel(itemManager);
         panel.setConnectionEnabled(config.enableConnection());
+        panel.setDeathCofferVisible(config.trackDeathCoffer());
+        panel.setDeathCofferThreshold(config.deathCofferLowThreshold());
         running = true;
         logoFetchedAt = 0;
         mapIconFetchedAt = 0;
@@ -193,6 +213,11 @@ public class ClanTrackerPlugin extends Plugin
     private void resetAccount()
     {
         liveXp.clear();
+        groupStorageWithdrawals.clear();
+        approvedLogout = false;
+        deathCofferValue = Integer.MIN_VALUE;
+        deathCofferProfile = null;
+        publishDeathCofferValue();
         account = null;
         bank = null;
         bankUpdatedAt = 0;
@@ -229,10 +254,6 @@ public class ClanTrackerPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick event)
     {
-        if (!config.enableConnection())
-        {
-            return;
-        }
         if (client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)
         {
             return;
@@ -242,6 +263,25 @@ public class ClanTrackerPlugin extends Plugin
         {
             resetAccount();
             account = name;
+        }
+        if (config.trackDeathCoffer())
+        {
+            refreshDeathCoffer();
+        }
+        if (config.gimStorageReminder())
+        {
+            groupStorageWithdrawals.updateStorage(client.getItemContainer(InventoryID.GROUP_STORAGE));
+            int inventoryContainerId = getWithdrawalInventoryContainerId();
+            groupStorageWithdrawals.updateInventory(inventoryContainerId, client.getItemContainer(inventoryContainerId));
+            groupStorageWithdrawals.finishTick();
+        }
+        else
+        {
+            groupStorageWithdrawals.clear();
+        }
+        if (!config.enableConnection())
+        {
+            return;
         }
         ticks++;
         for (Skill skill : Skill.values())
@@ -270,10 +310,6 @@ public class ClanTrackerPlugin extends Plugin
 
     private Map<String, Integer> killCounts()
     {
-        if (configManager == null)
-        {
-            return null;
-        }
         String profile = configManager.getRSProfileKey();
         Map<String, Integer> counts = new TreeMap<>();
         for (String key : configManager.getRSProfileConfigurationKeys("killcount", profile, ""))
@@ -397,6 +433,18 @@ public class ClanTrackerPlugin extends Plugin
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged event)
     {
+        if (config.gimStorageReminder())
+        {
+            int inventoryContainerId = getWithdrawalInventoryContainerId();
+            if (event.getContainerId() == inventoryContainerId)
+            {
+                groupStorageWithdrawals.updateInventory(inventoryContainerId, event.getItemContainer());
+            }
+            else if (event.getContainerId() == InventoryID.GROUP_STORAGE.getId())
+            {
+                groupStorageWithdrawals.updateStorage(event.getItemContainer());
+            }
+        }
         if (!config.shareBank() || account == null || client.getGameState() != GameState.LOGGED_IN ||
             (event.getContainerId() != InventoryID.BANK.getId() &&
                 event.getContainerId() != InventoryID.GROUP_STORAGE.getId()))
@@ -421,6 +469,74 @@ public class ClanTrackerPlugin extends Plugin
         captureSnapshot();
     }
 
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event)
+    {
+        if (!isLogoutAction(event))
+        {
+            return;
+        }
+        if (!config.gimStorageReminder())
+        {
+            return;
+        }
+        if (approvedLogout)
+        {
+            approvedLogout = false;
+            return;
+        }
+        if (!groupStorageWithdrawals.hasItemsToReturn())
+        {
+            return;
+        }
+        event.consume();
+        MenuEntry entry = event.getMenuEntry();
+        String warning = logoutWarningMessage(groupStorageWithdrawals.itemsToReturn());
+        SwingUtilities.invokeLater(() -> {
+            int choice = JOptionPane.showConfirmDialog(null,
+                warning,
+                "Group Storage Items", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (choice == JOptionPane.YES_OPTION)
+            {
+                clientThread.invokeLater(() -> {
+                    if (running)
+                    {
+                        approvedLogout = true;
+                        client.menuAction(entry.getParam0(), entry.getParam1(), entry.getType(),
+                            entry.getIdentifier(), entry.getItemId(), entry.getOption(), entry.getTarget());
+                    }
+                    return true;
+                });
+            }
+        });
+    }
+
+    private String logoutWarningMessage(Map<Integer, Long> items)
+    {
+        StringBuilder message = new StringBuilder("You still have items withdrawn from Group Ironman storage:\n");
+        for (Map.Entry<Integer, Long> item : new TreeMap<>(items).entrySet())
+        {
+            String name = itemManager.getItemComposition(item.getKey()).getName();
+            message.append("- ").append(name).append(" x ").append(item.getValue()).append('\n');
+        }
+        message.append("\nAre you sure you want to log out before returning them?");
+        return message.toString();
+    }
+
+    static boolean isLogoutAction(MenuOptionClicked event)
+    {
+        String option = event.getMenuOption();
+        return option != null && "Logout".equalsIgnoreCase(option.trim());
+    }
+
+    private int getWithdrawalInventoryContainerId()
+    {
+        Widget groupStorage = client.getWidget(WidgetInfo.GROUP_STORAGE_UI);
+        return groupStorage != null && !groupStorage.isHidden()
+            ? InventoryID.GROUP_STORAGE_INV.getId()
+            : InventoryID.INVENTORY.getId();
+    }
+
     private void checkQuests()
     {
         // Login establishes a baseline; old completions must not generate new alerts.
@@ -443,6 +559,120 @@ public class ClanTrackerPlugin extends Plugin
     public void onVarbitChanged(VarbitChanged event)
     {
         questsDirty = true;
+    }
+
+    private void refreshDeathCoffer()
+    {
+        String profile = configManager.getRSProfileKey();
+        if (!Objects.equals(profile, deathCofferProfile))
+        {
+            deathCofferProfile = profile;
+            deathCofferValue = Integer.MIN_VALUE;
+            Integer saved = configManager.getRSProfileConfiguration("bowlsofmayo", DEATH_COFFER_BALANCE_KEY, int.class);
+            if (saved != null && saved >= 0)
+            {
+                deathCofferValue = saved;
+            }
+            publishDeathCofferValue();
+        }
+        if (profile == null)
+        {
+            return;
+        }
+        // IF1 is reused by other interfaces; only the visible coffer's rendered balance is authoritative.
+        Widget coffer = client.getWidget(InterfaceID.DeathCoffer.LEFT);
+        if (coffer == null || coffer.isHidden())
+        {
+            return;
+        }
+        Widget balance = coffer.getChild(0);
+        if (balance == null || balance.isHidden())
+        {
+            return;
+        }
+        String text = balance.getText();
+        Integer value = parseDeathCofferBalance(text);
+        if (value == null)
+        {
+            if (!Objects.equals(text, unrecognizedCofferText))
+            {
+                LOG.warn("Cannot read Death's Coffer balance: unrecognized interface text");
+                unrecognizedCofferText = text;
+            }
+            return;
+        }
+        unrecognizedCofferText = null;
+        if (value != deathCofferValue)
+        {
+            configManager.setRSProfileConfiguration("bowlsofmayo", DEATH_COFFER_BALANCE_KEY, value);
+            updateDeathCofferValue(value);
+        }
+    }
+
+    static Integer parseDeathCofferBalance(String text)
+    {
+        if (text == null)
+        {
+            return null;
+        }
+        Matcher matcher = DEATH_COFFER_TEXT.matcher(Text.removeTags(text).replace('\u00a0', ' ').trim());
+        if (!matcher.matches())
+        {
+            return null;
+        }
+        if (matcher.group(1).equals("Empty"))
+        {
+            return 0;
+        }
+        String digits = matcher.group(1).split(" ")[0].replace(",", "");
+        if (digits.length() > 10)
+        {
+            return null;
+        }
+        long value = Long.parseLong(digits);
+        return value <= Integer.MAX_VALUE ? (int) value : null;
+    }
+
+    private void updateDeathCofferValue(int value)
+    {
+        if (deathCofferValue == value)
+        {
+            return;
+        }
+        int previousValue = deathCofferValue;
+        deathCofferValue = value;
+        if (config.notifyDeathCofferLow() &&
+            crossedDeathCofferThreshold(previousValue, value, config.deathCofferLowThreshold()))
+        {
+            notifier.notify(String.format("Death's Coffer is low: %,d gp remaining.", value));
+        }
+        publishDeathCofferValue();
+    }
+
+    private void publishDeathCofferValue()
+    {
+        int value = deathCofferValue;
+        String profile = deathCofferProfile;
+        int expectedGeneration = generation;
+        SwingUtilities.invokeLater(() -> {
+            if (active(expectedGeneration) && panel != null && config.trackDeathCoffer() &&
+                deathCofferValue == value && Objects.equals(profile, deathCofferProfile))
+            {
+                if (value == Integer.MIN_VALUE)
+                {
+                    panel.clearDeathCofferValue();
+                }
+                else
+                {
+                    panel.setDeathCofferValue(value);
+                }
+            }
+        });
+    }
+
+    static boolean crossedDeathCofferThreshold(int previousValue, int value, int threshold)
+    {
+        return previousValue != Integer.MIN_VALUE && previousValue > threshold && value <= threshold;
     }
 
     @Subscribe
@@ -620,20 +850,19 @@ public class ClanTrackerPlugin extends Plugin
                 throw new IOException("Bridge returned an invalid group response");
             }
             clientThread.invokeLater(() -> {
-                if (!active(expectedGeneration) || accessRevision != expectedAccessRevision)
+                if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
                 {
-                    return;
+                    groupMembers = group.members;
+                    updateMap(group.members);
+                    // Item definitions must be read on the client thread, not Swing's EDT.
+                    TrackerData.Group panelGroup = tradeableView(group);
+                    SwingUtilities.invokeLater(() -> {
+                        if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
+                        {
+                            panel.update(panelGroup);
+                        }
+                    });
                 }
-                groupMembers = group.members;
-                updateMap(group.members);
-                // Item compositions are only readable on the client thread, so filter before handing off to Swing.
-                TrackerData.Group panelGroup = tradeableView(group);
-                SwingUtilities.invokeLater(() -> {
-                    if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
-                    {
-                        panel.update(panelGroup);
-                    }
-                });
             });
             if (active(expectedGeneration))
             {
@@ -683,26 +912,13 @@ public class ClanTrackerPlugin extends Plugin
         List<TrackerData.BankItem> tradeable = new ArrayList<>(items.size());
         for (TrackerData.BankItem item : items)
         {
-            if (isTradeable(item.id))
+            if (tradeableCache.computeIfAbsent(item.id,
+                id -> itemManager.getItemComposition(itemManager.canonicalize(id)).isTradeable()))
             {
                 tradeable.add(item);
             }
         }
         return tradeable;
-    }
-
-    private boolean isTradeable(int itemId)
-    {
-        return tradeableCache.computeIfAbsent(itemId, id -> {
-            try
-            {
-                return itemManager.getItemComposition(itemManager.canonicalize(id)).isTradeable();
-            }
-            catch (RuntimeException error)
-            {
-                return true;
-            }
-        });
     }
 
     private void uploadBankIcons(BridgeClient bridge, TrackerData.Member current, TrackerData.Group group,
@@ -828,6 +1044,22 @@ public class ClanTrackerPlugin extends Plugin
         }
         switch (event.getKey())
         {
+            case "deathCofferLowThreshold":
+                SwingUtilities.invokeLater(() -> {
+                    if (panel != null)
+                    {
+                        panel.setDeathCofferThreshold(config.deathCofferLowThreshold());
+                    }
+                });
+                break;
+            case "trackDeathCoffer":
+                SwingUtilities.invokeLater(() -> {
+                    if (panel != null)
+                    {
+                        panel.setDeathCofferVisible(config.trackDeathCoffer());
+                    }
+                });
+                break;
             case "enableConnection":
                 resetUploadAccess();
                 clearGroupData(config.enableConnection() ? "Waiting for sync." :

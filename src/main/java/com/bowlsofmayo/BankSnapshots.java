@@ -34,11 +34,7 @@ final class BankSnapshots
         return readItems(itemManager, container, null);
     }
 
-    /**
-     * The bank container stores tab 1..9 contents first (sizes from the BANK_TAB_n varbits),
-     * followed by untabbed items, so each slot's tab follows from its index. Placeholders occupy
-     * slots too, which is why tabs are assigned before empty stacks are skipped.
-     */
+    // Numbered tabs precede untabbed slots; placeholders still count towards tab boundaries.
     List<TrackerData.BankItem> readItems(ItemManager itemManager, ItemContainer container, int[] tabCounts)
     {
         List<TrackerData.BankItem> result = new ArrayList<>();

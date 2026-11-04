@@ -17,7 +17,6 @@ final class FeatureParser
         "Congratulations! You have completed all of the (easy|medium|hard|elite) tasks in the (.+?) area",
         Pattern.CASE_INSENSITIVE);
 
-    /** Returns e.g. "Varrock Hard" for an achievement diary tier completion, otherwise null. */
     static String parseDiary(String message)
     {
         Matcher matcher = DIARY.matcher(message);
@@ -31,7 +30,7 @@ final class FeatureParser
 
     static Kill parseKill(String message)
     {
-        // Prefixed completion messages first, so "completed"/"subdued" never becomes part of the boss name.
+        // Check prefixed completions first so "completed" never becomes part of the boss name.
         Matcher matcher = COMPLETION.matcher(message);
         if (!matcher.find())
         {
@@ -82,7 +81,6 @@ final class FeatureParser
         }
     }
 
-    /** Reward chests whose count message accompanies a loot drop rather than a boss kill. */
     static boolean isChestCount(String value)
     {
         return "lunarchest".equals(sourceKey(value));

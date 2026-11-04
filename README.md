@@ -39,6 +39,16 @@ If your token no longer works, contact your group administrator.
 Reopen your bank or group storage after enabling or changing bank sharing so
 the plugin can collect a fresh snapshot.
 
+The sidebar bank viewer shows your real bank tabs. Left-click a tab to show only
+its items, or right-click a tab (or its heading) to collapse/expand it. The same
+works on the web dashboard.
+
+The sidebar can also show your last observed **Death's Coffer** balance, with an
+optional low-balance warning. Open the coffer once per character to sync it;
+fees paid elsewhere update the next time you open it. This balance stays in
+RuneLite and is not uploaded. If you withdraw items from group storage, the
+plugin can remind you to return them before logging out.
+
 The default sidebar icon is the three-companion shield. Select
 **Sidebar icon > Companion shield** to switch back from a group logo or item icon.
 
