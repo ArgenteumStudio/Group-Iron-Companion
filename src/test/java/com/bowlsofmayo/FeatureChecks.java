@@ -38,6 +38,17 @@ public final class FeatureChecks
         checkKill("Your subdued Wintertodt count is: 45.", "Wintertodt", 45);
         checkKill("Your Vorkath kill count is: 1.", "Vorkath", 1);
         checkKill("Your Lunar Chest count is: 12.", "Lunar Chest", 12);
+        assert FeatureParser.isChestCount("Lunar Chest") : "Lunar Chest KC belongs on the loot drop, not boss kills";
+        assert !FeatureParser.isChestCount("Eclipse Moon") && !FeatureParser.isChestCount("Brutus");
+        assert "Varrock Hard".equals(FeatureParser.parseDiary(
+            "Congratulations! You have completed all of the hard tasks in the Varrock area. Speak to Toby to claim your reward."));
+        assert "Lumbridge & Draynor Elite".equals(FeatureParser.parseDiary(
+            "Congratulations! You have completed all of the elite tasks in the Lumbridge & Draynor area."));
+        assert FeatureParser.parseDiary("Well done! You have completed an easy task in the Varrock area.") == null;
+        int[] tabs = {2, 0, 3, 0, 0, 0, 0, 0, 0};
+        assert BankSnapshots.tabFor(0, tabs) == 1 && BankSnapshots.tabFor(1, tabs) == 1;
+        assert BankSnapshots.tabFor(2, tabs) == 3 && BankSnapshots.tabFor(4, tabs) == 3 : "Empty tabs are skipped";
+        assert BankSnapshots.tabFor(5, tabs) == 0 : "Items after the last tab are untabbed";
         checkKill("Your Barrows chest count is: 250.", "Barrows chest", 250);
         assert FeatureParser.sourceKey("Barrows chest").equals(FeatureParser.sourceKey("Barrows"));
         assert FeatureParser.parseKill("Your Ape Atoll Agility lap count is: 5.") == null;
@@ -277,6 +288,10 @@ public final class FeatureChecks
                 if (method.getName().equals("getVarpValue") && ((Number) arguments[0]).intValue() == VarPlayerID.QP)
                 {
                     return 40;
+                }
+                if (method.getName().equals("getVarbitValue"))
+                {
+                    return 0;
                 }
                 throw new AssertionError("Unexpected client access: " + method.getName());
             });

@@ -31,12 +31,25 @@ final class BankSnapshots
 
     List<TrackerData.BankItem> readItems(ItemManager itemManager, ItemContainer container)
     {
+        return readItems(itemManager, container, null);
+    }
+
+    /**
+     * The bank container stores tab 1..9 contents first (sizes from the BANK_TAB_n varbits),
+     * followed by untabbed items, so each slot's tab follows from its index. Placeholders occupy
+     * slots too, which is why tabs are assigned before empty stacks are skipped.
+     */
+    List<TrackerData.BankItem> readItems(ItemManager itemManager, ItemContainer container, int[] tabCounts)
+    {
         List<TrackerData.BankItem> result = new ArrayList<>();
-        for (Item item : container.getItems())
+        Item[] items = container.getItems();
+        for (int slot = 0; slot < items.length; slot++)
         {
+            Item item = items[slot];
             if (item.getId() > 0 && item.getQuantity() > 0)
             {
                 TrackerData.BankItem entry = new TrackerData.BankItem();
+                entry.tab = tabCounts == null ? null : tabFor(slot, tabCounts);
                 entry.id = item.getId();
                 entry.qty = item.getQuantity();
                 entry.name = itemManager.getItemComposition(item.getId()).getName();
@@ -48,6 +61,20 @@ final class BankSnapshots
             }
         }
         return Collections.unmodifiableList(result);
+    }
+
+    static int tabFor(int slot, int[] tabCounts)
+    {
+        int end = 0;
+        for (int tab = 0; tab < tabCounts.length; tab++)
+        {
+            end += Math.max(0, tabCounts[tab]);
+            if (slot < end)
+            {
+                return tab + 1;
+            }
+        }
+        return 0;
     }
 
     static List<TrackerData.BankItem> combinedItems(List<TrackerData.BankItem> personal,

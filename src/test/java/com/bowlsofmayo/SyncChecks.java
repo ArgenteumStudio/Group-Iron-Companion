@@ -739,6 +739,7 @@ final class SyncChecks
                 boolean completed = task.getAsBoolean();
                 assert completed : "Unexpected deferred client task";
             }
+            SwingUtilities.invokeAndWait(() -> { });
         }
 
         public void close() throws IOException

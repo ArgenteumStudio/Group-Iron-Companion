@@ -18,7 +18,8 @@ final class UploadCoordinator
             case "chat": return config.shareChat();
             case "boss": return config.bossAlerts();
             case "loot": return config.dropAlerts();
-            case "quest": return config.questAlerts();
+            case "quest":
+            case "diary": return config.questAlerts();
             default: throw new IllegalArgumentException("Unknown alert type: " + event.type);
         }
     }
@@ -29,6 +30,7 @@ final class UploadCoordinator
         upload.username = source.username;
         upload.stats = source.stats;
         upload.questPoints = source.questPoints;
+        upload.killCounts = config.bossAlerts() ? source.killCounts : null;
         upload.observedAt = source.observedAt;
         upload.position = config.shareLocation() ? source.position : null;
         upload.bankShared = config.shareBank() && source.bankShared;

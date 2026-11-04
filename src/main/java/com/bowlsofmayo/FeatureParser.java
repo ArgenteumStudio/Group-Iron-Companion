@@ -13,6 +13,22 @@ final class FeatureParser
         "^Your (?:completion count for|completed|subdued) (.+?) (?:count )?is:\\s*([0-9,]+)\\b",
         Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern DIARY = Pattern.compile(
+        "Congratulations! You have completed all of the (easy|medium|hard|elite) tasks in the (.+?) area",
+        Pattern.CASE_INSENSITIVE);
+
+    /** Returns e.g. "Varrock Hard" for an achievement diary tier completion, otherwise null. */
+    static String parseDiary(String message)
+    {
+        Matcher matcher = DIARY.matcher(message);
+        if (!matcher.find())
+        {
+            return null;
+        }
+        String tier = matcher.group(1).toLowerCase(Locale.ROOT);
+        return matcher.group(2).trim() + " " + Character.toUpperCase(tier.charAt(0)) + tier.substring(1);
+    }
+
     static Kill parseKill(String message)
     {
         // Prefixed completion messages first, so "completed"/"subdued" never becomes part of the boss name.
@@ -64,6 +80,12 @@ final class FeatureParser
             case "barrowschest": return "barrows";
             default: return key;
         }
+    }
+
+    /** Reward chests whose count message accompanies a loot drop rather than a boss kill. */
+    static boolean isChestCount(String value)
+    {
+        return "lunarchest".equals(sourceKey(value));
     }
 
     static final class Kill

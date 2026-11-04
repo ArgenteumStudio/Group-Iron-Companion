@@ -37,7 +37,7 @@ public interface ClanTrackerConfig extends Config
     default boolean shareChat() { return false; }
 
     @ConfigItem(keyName = "bossAlerts", name = "Boss KC alerts",
-        description = "Send observed boss kill/completion counts to Discord", position = 6)
+        description = "Send observed boss kill/completion counts to Discord and share saved kill counts for !kc", position = 6)
     default boolean bossAlerts() { return false; }
 
     @ConfigItem(keyName = "dropAlerts", name = "Drop alerts",
@@ -50,7 +50,7 @@ public interface ClanTrackerConfig extends Config
     default int minimumDropValue() { return 0; }
 
     @ConfigItem(keyName = "questAlerts", name = "Quest alerts",
-        description = "Announce quests completed while the plugin is active", position = 8)
+        description = "Announce quests and achievement diary tiers completed while the plugin is active", position = 8)
     default boolean questAlerts() { return false; }
 
     @ConfigItem(keyName = "sidebarIcon", name = "Sidebar icon",

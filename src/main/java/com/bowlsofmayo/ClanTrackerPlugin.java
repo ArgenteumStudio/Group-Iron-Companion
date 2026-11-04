@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
@@ -26,6 +27,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -68,6 +70,11 @@ public class ClanTrackerPlugin extends Plugin
     @Inject private Gson runeLiteGson;
     @Inject private ClientToolbar toolbar;
     @Inject private ItemManager itemManager;
+    @Inject private ConfigManager configManager;
+    private static final int[] BANK_TAB_VARBITS = {
+        VarbitID.BANK_TAB_1, VarbitID.BANK_TAB_2, VarbitID.BANK_TAB_3, VarbitID.BANK_TAB_4, VarbitID.BANK_TAB_5,
+        VarbitID.BANK_TAB_6, VarbitID.BANK_TAB_7, VarbitID.BANK_TAB_8, VarbitID.BANK_TAB_9};
+    private final Map<Integer, Boolean> tradeableCache = new HashMap<>();
     @Inject private WorldMapPointManager mapManager;
     @Inject private okhttp3.OkHttpClient http;
 
@@ -261,6 +268,25 @@ public class ClanTrackerPlugin extends Plugin
         }
     }
 
+    private Map<String, Integer> killCounts()
+    {
+        if (configManager == null)
+        {
+            return null;
+        }
+        String profile = configManager.getRSProfileKey();
+        Map<String, Integer> counts = new TreeMap<>();
+        for (String key : configManager.getRSProfileConfigurationKeys("killcount", profile, ""))
+        {
+            Integer kc = configManager.getConfiguration("killcount", profile, key, int.class);
+            if (kc != null && kc > 0 && key.length() <= 80 && counts.size() < 500)
+            {
+                counts.put(key, kc);
+            }
+        }
+        return counts;
+    }
+
     private void captureSnapshot()
     {
         if (accessResetPending)
@@ -273,6 +299,10 @@ public class ClanTrackerPlugin extends Plugin
         member.observedAt = System.currentTimeMillis();
         member.bankShared = config.shareBank();
         member.questPoints = client.getVarpValue(VarPlayerID.QP);
+        if (config.bossAlerts())
+        {
+            member.killCounts = killCounts();
+        }
         for (Skill skill : Skill.values())
         {
             if (skill == Skill.OVERALL)
@@ -380,7 +410,12 @@ public class ClanTrackerPlugin extends Plugin
         }
         else
         {
-            bank = bankSnapshots.readItems(itemManager, event.getItemContainer());
+            int[] tabCounts = new int[BANK_TAB_VARBITS.length];
+            for (int tab = 0; tab < tabCounts.length; tab++)
+            {
+                tabCounts[tab] = client.getVarbitValue(BANK_TAB_VARBITS[tab]);
+            }
+            bank = bankSnapshots.readItems(itemManager, event.getItemContainer(), tabCounts);
             bankUpdatedAt = System.currentTimeMillis();
         }
         captureSnapshot();
@@ -430,13 +465,25 @@ public class ClanTrackerPlugin extends Plugin
         {
             return;
         }
+        String diary = FeatureParser.parseDiary(text);
+        if (diary != null)
+        {
+            if (config.questAlerts())
+            {
+                TrackerData.Event event = event("diary");
+                event.id = "diary:" + FeatureParser.sourceKey(diary);
+                event.diary = diary;
+                enqueue(event);
+            }
+            return;
+        }
         FeatureParser.Kill kill = FeatureParser.parseKill(text);
         if (kill == null)
         {
             return;
         }
         FeatureParser.Kill previous = kills.put(FeatureParser.sourceKey(kill.boss), kill);
-        if (config.bossAlerts() && (previous == null || previous.kc != kill.kc))
+        if (config.bossAlerts() && !FeatureParser.isChestCount(kill.boss) && (previous == null || previous.kc != kill.kc))
         {
             TrackerData.Event event = event("boss");
             event.id = "boss:" + FeatureParser.sourceKey(kill.boss) + ":" + kill.kc;
@@ -572,18 +619,21 @@ public class ClanTrackerPlugin extends Plugin
             {
                 throw new IOException("Bridge returned an invalid group response");
             }
-            SwingUtilities.invokeLater(() -> {
-                if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
-                {
-                    panel.update(group);
-                }
-            });
             clientThread.invokeLater(() -> {
-                if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
+                if (!active(expectedGeneration) || accessRevision != expectedAccessRevision)
                 {
-                    groupMembers = group.members;
-                    updateMap(group.members);
+                    return;
                 }
+                groupMembers = group.members;
+                updateMap(group.members);
+                // Item compositions are only readable on the client thread, so filter before handing off to Swing.
+                TrackerData.Group panelGroup = tradeableView(group);
+                SwingUtilities.invokeLater(() -> {
+                    if (active(expectedGeneration) && accessRevision == expectedAccessRevision)
+                    {
+                        panel.update(panelGroup);
+                    }
+                });
             });
             if (active(expectedGeneration))
             {
@@ -597,6 +647,62 @@ public class ClanTrackerPlugin extends Plugin
             LOG.warn("BowlsofMayo bridge sync failed: {}", error.getMessage());
             clearGroupData("Not synced: " + error.getMessage(), expectedGeneration, expectedAccessRevision);
         }
+    }
+
+    private TrackerData.Group tradeableView(TrackerData.Group group)
+    {
+        TrackerData.Group view = new TrackerData.Group();
+        view.icons = group.icons;
+        view.viewer = group.viewer;
+        view.members = new ArrayList<>();
+        for (TrackerData.Member member : group.members)
+        {
+            TrackerData.Member copy = new TrackerData.Member();
+            copy.username = member.username;
+            copy.bank = tradeableItems(member.bank);
+            copy.bankShared = member.bankShared;
+            copy.bankUpdatedAt = member.bankUpdatedAt;
+            view.members.add(copy);
+        }
+        if (group.groupStorage != null)
+        {
+            view.groupStorage = new TrackerData.GroupStorage();
+            view.groupStorage.items = tradeableItems(group.groupStorage.items);
+            view.groupStorage.updatedAt = group.groupStorage.updatedAt;
+            view.groupStorage.username = group.groupStorage.username;
+        }
+        return view;
+    }
+
+    private List<TrackerData.BankItem> tradeableItems(List<TrackerData.BankItem> items)
+    {
+        if (items == null)
+        {
+            return null;
+        }
+        List<TrackerData.BankItem> tradeable = new ArrayList<>(items.size());
+        for (TrackerData.BankItem item : items)
+        {
+            if (isTradeable(item.id))
+            {
+                tradeable.add(item);
+            }
+        }
+        return tradeable;
+    }
+
+    private boolean isTradeable(int itemId)
+    {
+        return tradeableCache.computeIfAbsent(itemId, id -> {
+            try
+            {
+                return itemManager.getItemComposition(itemManager.canonicalize(id)).isTradeable();
+            }
+            catch (RuntimeException error)
+            {
+                return true;
+            }
+        });
     }
 
     private void uploadBankIcons(BridgeClient bridge, TrackerData.Member current, TrackerData.Group group,

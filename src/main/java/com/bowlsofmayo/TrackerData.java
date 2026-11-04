@@ -27,6 +27,8 @@ final class TrackerData
         String name;
         Long price;
         Integer highAlch;
+        // 1-9 for bank tabs, 0 for untabbed items, null when the source has no tabs.
+        Integer tab;
     }
 
     static final class Member
@@ -41,6 +43,8 @@ final class TrackerData
         long groupStorageUpdatedAt;
         long observedAt;
         Integer questPoints;
+        // Lower-case boss name -> kill count, from RuneLite's saved chat-command kill counts.
+        Map<String, Integer> killCounts;
         long updatedAt;
     }
 
@@ -86,6 +90,7 @@ final class TrackerData
         Integer kc;
         String source;
         String quest;
+        String diary;
         List<BankItem> items;
     }
 }
