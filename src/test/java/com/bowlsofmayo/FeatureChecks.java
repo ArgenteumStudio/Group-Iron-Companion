@@ -37,6 +37,10 @@ public final class FeatureChecks
         checkKill("Your completed The Gauntlet count is: 100.", "The Gauntlet", 100);
         checkKill("Your subdued Wintertodt count is: 45.", "Wintertodt", 45);
         checkKill("Your Vorkath kill count is: 1.", "Vorkath", 1);
+        checkKill("Your Lunar Chest count is: 12.", "Lunar Chest", 12);
+        checkKill("Your Barrows chest count is: 250.", "Barrows chest", 250);
+        assert FeatureParser.sourceKey("Barrows chest").equals(FeatureParser.sourceKey("Barrows"));
+        assert FeatureParser.parseKill("Your Ape Atoll Agility lap count is: 5.") == null;
         assert FeatureParser.parseKill("Someone says: Your Zulrah kill count is: 10.") == null;
         assert FeatureParser.parseKill("Your Zulrah kill count is: 9999999999999999999.") == null;
         assert FeatureParser.parseKill("Your Zulrah kill count is: 0.") == null;

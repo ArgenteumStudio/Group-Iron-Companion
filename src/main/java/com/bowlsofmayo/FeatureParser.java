@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 final class FeatureParser
 {
     private static final Pattern KILL = Pattern.compile(
-        "^Your (.+?) (?:kill|harvest|completion|subdued) count is:\\s*([0-9,]+)\\b",
+        "^Your (.+?) (?:(?:kill|harvest|completion|success|subdued) )?count is:\\s*([0-9,]+)\\b",
         Pattern.CASE_INSENSITIVE);
     private static final Pattern COMPLETION = Pattern.compile(
         "^Your (?:completion count for|completed|subdued) (.+?) (?:count )?is:\\s*([0-9,]+)\\b",
@@ -15,14 +15,19 @@ final class FeatureParser
 
     static Kill parseKill(String message)
     {
-        Matcher matcher = KILL.matcher(message);
+        // Prefixed completion messages first, so "completed"/"subdued" never becomes part of the boss name.
+        Matcher matcher = COMPLETION.matcher(message);
         if (!matcher.find())
         {
-            matcher = COMPLETION.matcher(message);
+            matcher = KILL.matcher(message);
             if (!matcher.find())
             {
                 return null;
             }
+        }
+        if (matcher.group(1).toLowerCase(Locale.ROOT).endsWith(" lap"))
+        {
+            return null;
         }
         String digits = matcher.group(2).replace(",", "");
         if (digits.length() > 10)
@@ -56,6 +61,7 @@ final class FeatureParser
             case "thecorruptedgauntlet": return "corruptedgauntlet";
             case "theleviathan": return "leviathan";
             case "thewhisperer": return "whisperer";
+            case "barrowschest": return "barrows";
             default: return key;
         }
     }
