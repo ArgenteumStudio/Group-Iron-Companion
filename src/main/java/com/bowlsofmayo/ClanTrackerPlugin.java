@@ -42,7 +42,6 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
@@ -531,7 +530,7 @@ public class ClanTrackerPlugin extends Plugin
 
     private int getWithdrawalInventoryContainerId()
     {
-        Widget groupStorage = client.getWidget(WidgetInfo.GROUP_STORAGE_UI);
+        Widget groupStorage = client.getWidget(InterfaceID.SharedBank.FRAME);
         return groupStorage != null && !groupStorage.isHidden()
             ? InventoryID.GROUP_STORAGE_INV.getId()
             : InventoryID.INVENTORY.getId();
