@@ -22,7 +22,7 @@ public interface ClanTrackerConfig extends Config
     String displaySection = "display";
 
     @ConfigItem(keyName = "enableConnection", name = "Enable connection / consent",
-        description = "OFF by default. Enabling sends your RS name, stats and quest points to the configured server operator. They can read, store and share uploads. Optional banks, location and alerts require separate switches. Disabling does not delete previous uploads.",
+        description = "OFF by default. Enabling sends your RS name, stats and quest points to the configured server operator. They can read, store and share uploads. Optional banks, storage withdrawals, location and alerts require separate switches. Disabling does not delete previous uploads.",
         position = 0, section = connectionSection)
     default boolean enableConnection() { return false; }
 
@@ -46,12 +46,16 @@ public interface ClanTrackerConfig extends Config
         description = "Share personal bank and Group Ironman storage snapshots when you open them", position = 2, section = sharingSection)
     default boolean shareBank() { return false; }
 
+    @ConfigItem(keyName = "shareStorageWithdrawals", name = "Share Group Storage withdrawals",
+        description = "Share which Group Ironman storage items you currently have withdrawn with members allowed to view Group Storage", position = 3, section = sharingSection)
+    default boolean shareStorageWithdrawals() { return false; }
+
     @ConfigItem(keyName = "shareChat", name = "Forward GIM chat",
-        description = "Forward only your own Group Ironman channel messages to private Discord", position = 3, section = sharingSection)
+        description = "Forward only your own Group Ironman channel messages to private Discord", position = 4, section = sharingSection)
     default boolean shareChat() { return false; }
 
     @ConfigItem(keyName = "shareLiveXp", name = "Live XP drops",
-        description = "Send immediate skill XP changes to the private website (not Discord)", position = 4, section = sharingSection)
+        description = "Send immediate skill XP changes to the private website (not Discord)", position = 5, section = sharingSection)
     default boolean shareLiveXp() { return false; }
 
     @ConfigItem(keyName = "bossAlerts", name = "Boss KC alerts",
@@ -71,8 +75,8 @@ public interface ClanTrackerConfig extends Config
         description = "Minimum GE value per item stack to announce; zero includes untradeables", position = 6, section = notificationsSection)
     default int minimumDropValue() { return 0; }
 
-    @ConfigItem(keyName = "gimStorageReminder", name = "GIM Storage Reminder",
-        description = "Warn before logging out when items withdrawn from Group Ironman storage remain in your inventory", position = 3, section = notificationsSection)
+    @ConfigItem(keyName = "gimStorageReminder", name = "Show borrowed items overlay",
+        description = "Show a movable overlay next to the minimap listing items taken from Group Storage until they are deposited back. Uncheck to hide it.", position = 3, section = notificationsSection)
     default boolean gimStorageReminder() { return true; }
 
     @ConfigItem(keyName = "notifyDeathCofferLow", name = "Death's Coffer low balance notification",

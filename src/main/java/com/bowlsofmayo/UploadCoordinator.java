@@ -34,6 +34,8 @@ final class UploadCoordinator
         upload.observedAt = source.observedAt;
         upload.position = config.shareLocation() ? source.position : null;
         upload.bankShared = config.shareBank() && source.bankShared;
+        upload.borrowedItemsShared = config.shareStorageWithdrawals();
+        upload.borrowedItems = upload.borrowedItemsShared ? source.borrowedItems : null;
         if (upload.bankShared)
         {
             upload.bank = source.bank;

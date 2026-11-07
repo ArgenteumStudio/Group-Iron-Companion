@@ -41,6 +41,9 @@ final class TrackerData
         long bankUpdatedAt;
         List<BankItem> groupStorage;
         long groupStorageUpdatedAt;
+        boolean borrowedItemsShared;
+        Map<Integer, Long> borrowedItems;
+        long borrowedItemsUpdatedAt;
         long observedAt;
         Integer questPoints;
         Map<String, Integer> killCounts;

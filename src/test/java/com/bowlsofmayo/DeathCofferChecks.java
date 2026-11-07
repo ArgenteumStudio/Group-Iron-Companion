@@ -123,7 +123,12 @@ final class DeathCofferChecks
                 {
                     case "getGameState": return GameState.LOGGED_IN;
                     case "getLocalPlayer": return player;
+                    case "getItemContainer": return null;
                     case "getWidget":
+                        if ((int) arguments[0] == InterfaceID.SharedBank.FRAME)
+                        {
+                            return null;
+                        }
                         assert (int) arguments[0] == InterfaceID.DeathCoffer.LEFT;
                         return open ? coffer : null;
                     default: throw new AssertionError("Must not read temporary varps: " + method.getName());

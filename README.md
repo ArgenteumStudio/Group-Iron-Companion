@@ -46,8 +46,14 @@ works on the web dashboard.
 The sidebar can also show your last observed **Death's Coffer** balance, with an
 optional low-balance warning. Open the coffer once per character to sync it;
 fees paid elsewhere update the next time you open it. This balance stays in
-RuneLite and is not uploaded. If you withdraw items from group storage, the
-plugin can remind you to return them before logging out.
+RuneLite and is not uploaded.
+
+If you withdraw items from Group Storage, a movable **Currently Borrowed** card
+next to the minimap lists them until you deposit them back into Group Storage,
+even after restarting RuneLite. Food and potions are not tracked. Shift-right-click
+the card and choose **Clear** to remove your items manually, or turn off
+**Show borrowed items overlay** to hide it. With **Share Group Storage withdrawals**
+enabled, members allowed to view Group Storage also see what you have borrowed.
 
 The default sidebar icon is the three-companion shield. Select
 **Sidebar icon > Companion shield** to switch back from a group logo or item icon.

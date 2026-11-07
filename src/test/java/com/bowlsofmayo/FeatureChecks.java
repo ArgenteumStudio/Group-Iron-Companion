@@ -10,13 +10,13 @@ import java.lang.reflect.Proxy;
 import java.util.Queue;
 import java.util.List;
 import java.util.Arrays;
+import java.util.Collections;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.Quest;
 import net.runelite.api.WorldView;
@@ -24,7 +24,6 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ItemContainerChanged;
-import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
@@ -69,6 +68,7 @@ public final class FeatureChecks
         checkConnectionNotice();
         checkCompanionIcon();
         assert new ClanTrackerConfig() {}.gimStorageReminder() : "GIM storage reminder should stay enabled by default";
+        assert !new ClanTrackerConfig() {}.shareStorageWithdrawals() : "Storage withdrawal sharing should be off by default";
         assert new ClanTrackerConfig() {}.trackDeathCoffer() : "Death's Coffer tracker should be enabled by default";
         assert new ClanTrackerConfig() {}.notifyDeathCofferLow() : "Death's Coffer low balance notification should be enabled by default";
         assert new ClanTrackerConfig() {}.deathCofferLowThreshold() == 10000 : "Death's Coffer threshold should default to 10,000 GP";
@@ -77,7 +77,8 @@ public final class FeatureChecks
         assert !ClanTrackerPlugin.crossedDeathCofferThreshold(9000, 8000, 10000);
         assert !ClanTrackerPlugin.crossedDeathCofferThreshold(Integer.MIN_VALUE, 9000, 10000);
         checkGroupStorageWithdrawals();
-        checkLogoutAction();
+        checkBorrowedItemSharing();
+        checkLogoutInterceptorRemoved();
         DeathCofferChecks.run();
 
         Gson gson = new GsonBuilder().serializeNulls().create();
@@ -144,10 +145,17 @@ public final class FeatureChecks
         assert withdrawals.hasItemsToReturn() : "Storage withdrawals still in inventory should trigger a warning";
         assert withdrawals.itemsToReturn().get(4151) == 2L : "Warning should report remaining item quantity";
 
+        withdrawals.updateKept(95, container());
         withdrawals.updateInventory(93, container(4151, 2));
-        assert withdrawals.hasItemsToReturn() : "Warn while any withdrawn quantity remains in inventory";
-        withdrawals.updateStorage(container(4151, 4));
-        withdrawals.updateInventory(93, container(4151, 1));
+        withdrawals.updateKept(95, container(4151, 1));
+        for (int i = 0; i < 5; i++)
+        {
+            withdrawals.finishTick();
+        }
+        assert withdrawals.itemsToReturn().get(4151) == 2L
+            : "Deposits into the personal bank must not count as returning borrowed items";
+        withdrawals.updateStorage(container(4151, 5));
+        withdrawals.updateInventory(93, container());
         assert !withdrawals.hasItemsToReturn() : "Returning the withdrawn item should clear the warning";
 
         withdrawals.updateStorage(container(4151, 2));
@@ -155,6 +163,7 @@ public final class FeatureChecks
         {
             withdrawals.finishTick();
         }
+
         assert !withdrawals.hasItemsToReturn() : "Another member's withdrawal must not count without an inventory increase";
 
         withdrawals.updateInventory(93, container(4151, 2, 995, 10));
@@ -171,8 +180,79 @@ public final class FeatureChecks
         assert withdrawals.hasItemsToReturn() : "Group storage withdrawal should be tracked in its inventory container";
         withdrawals.updateInventory(93, container(4151, 3));
         assert withdrawals.hasItemsToReturn() : "Switching back to the standard inventory must retain the withdrawal";
+        withdrawals.updateStorage(container(4151, 5));
         withdrawals.updateInventory(93, container(4151, 1));
         assert !withdrawals.hasItemsToReturn() : "Returning the withdrawn item should clear after a container switch";
+
+        GroupStorageWithdrawals food = new GroupStorageWithdrawals();
+        food.updateStorage(container(3144, 10));
+        food.updateInventory(93, container());
+        food.updateKept(94, container());
+        food.updateStorage(container(3144, 6));
+        food.updateInventory(93, container(3144, 4));
+        food.updateInventory(93, container(3144, 3));
+        for (int i = 0; i < 5; i++)
+        {
+            food.finishTick();
+        }
+        assert food.itemsToReturn().get(3144) == 3L : "Eaten borrowed food must be cleared from the reminder";
+        food.updateInventory(93, container(3144, 2));
+        food.updateKept(94, container(3144, 1));
+        for (int i = 0; i < 5; i++)
+        {
+            food.finishTick();
+        }
+        assert food.itemsToReturn().get(3144) == 3L : "Worn borrowed items must stay on the reminder";
+        food.clearBorrowed();
+        assert !food.hasItemsToReturn() : "Clear must remove all borrowed items";
+
+        GroupStorageWithdrawals filtered = new GroupStorageWithdrawals();
+        filtered.setTrackable(id -> id != 3144);
+        filtered.updateStorage(container(3144, 10, 4151, 1));
+        filtered.updateInventory(93, container());
+        filtered.updateStorage(container(3144, 6));
+        filtered.updateInventory(93, container(3144, 4, 4151, 1));
+        assert filtered.itemsToReturn().equals(Collections.singletonMap(4151, 1L))
+            : "Food and potions must not be tracked as borrowed items";
+        java.util.Map<Integer, Long> savedFood = new java.util.HashMap<>();
+        savedFood.put(3144, 2L);
+        savedFood.put(4151, 1L);
+        filtered.restore(savedFood);
+        assert filtered.itemsToReturn().equals(Collections.singletonMap(4151, 1L))
+            : "Saved food and potions must be dropped when restoring";
+    }
+
+    private static void checkBorrowedItemSharing()
+    {
+        TrackerData.Member source = new TrackerData.Member();
+        source.borrowedItems = Collections.singletonMap(385, 4L);
+
+        TrackerData.Member optedOut = UploadCoordinator.snapshotForUpload(new ClanTrackerConfig() {}, source);
+        assert !optedOut.borrowedItemsShared : "Borrowed item data must not be shared by default";
+        assert optedOut.borrowedItems == null : "Opted-out snapshots must omit borrowed item data";
+
+        ClanTrackerConfig optedInConfig = new ClanTrackerConfig()
+        {
+            @Override
+            public boolean shareStorageWithdrawals()
+            {
+                return true;
+            }
+        };
+        TrackerData.Member optedIn = UploadCoordinator.snapshotForUpload(optedInConfig, source);
+        assert optedIn.borrowedItemsShared : "Opted-in snapshots must mark borrowed item sharing";
+        assert optedIn.borrowedItems.equals(source.borrowedItems) : "Opted-in snapshots must include borrowed item quantities";
+
+        java.util.Map<Integer, Long> saved = new java.util.HashMap<>();
+        saved.put(385, 4L);
+        saved.put(11802, 1L);
+        String encoded = GroupStorageWithdrawals.encode(saved);
+        assert GroupStorageWithdrawals.decode(encoded).equals(saved) : "Borrowed items must survive a client restart";
+        assert GroupStorageWithdrawals.decode("385:4,bad,1:x").equals(Collections.singletonMap(385, 4L))
+            : "Corrupted saved borrowed items must be skipped";
+        GroupStorageWithdrawals restored = new GroupStorageWithdrawals();
+        restored.restore(saved);
+        assert restored.itemsToReturn().equals(saved) : "Restored borrowed items must show in the reminder";
     }
 
     private static ItemContainer container(int... items)
@@ -191,20 +271,11 @@ public final class FeatureChecks
             });
     }
 
-    private static void checkLogoutAction()
+    private static void checkLogoutInterceptorRemoved()
     {
-        MenuEntry entry = (MenuEntry) Proxy.newProxyInstance(MenuEntry.class.getClassLoader(),
-            new Class<?>[]{MenuEntry.class}, (proxy, method, arguments) -> {
-                if (method.getName().equals("getOption")) return "Logout";
-                return null;
-            });
-        assert ClanTrackerPlugin.isLogoutAction(new MenuOptionClicked(entry));
-        MenuEntry other = (MenuEntry) Proxy.newProxyInstance(MenuEntry.class.getClassLoader(),
-            new Class<?>[]{MenuEntry.class}, (proxy, method, arguments) -> {
-                if (method.getName().equals("getOption")) return "Log out later";
-                return null;
-            });
-        assert !ClanTrackerPlugin.isLogoutAction(new MenuOptionClicked(other));
+        assert Arrays.stream(ClanTrackerPlugin.class.getDeclaredMethods())
+            .noneMatch(method -> method.getName().equals("onMenuOptionClicked"))
+            : "Logout reminders must not intercept menu actions";
     }
 
     private static void checkConnectionNotice() throws Exception

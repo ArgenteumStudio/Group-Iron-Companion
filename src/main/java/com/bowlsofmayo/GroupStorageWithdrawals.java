@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntPredicate;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 
@@ -17,8 +18,48 @@ final class GroupStorageWithdrawals
     private final Map<Integer, Integer> pendingStorageExpiry = new HashMap<>();
     private final Map<Integer, Long> pendingInventoryAdds = new HashMap<>();
     private final Map<Integer, Integer> pendingInventoryExpiry = new HashMap<>();
+    private final Map<Integer, Long> pendingStorageDeposits = new HashMap<>();
+    private final Map<Integer, Integer> pendingStorageDepositExpiry = new HashMap<>();
+    private final Map<Integer, Long> pendingInventoryRemovals = new HashMap<>();
+    private final Map<Integer, Integer> pendingInventoryRemovalExpiry = new HashMap<>();
+    private final Map<Integer, Map<Integer, Long>> keptContainers = new HashMap<>();
+    private final Map<Integer, Long> pendingKeptAdds = new HashMap<>();
+    private final Map<Integer, Integer> pendingKeptExpiry = new HashMap<>();
     private final Map<Integer, Long> withdrawnInInventory = new HashMap<>();
     private int tick;
+    private IntPredicate trackable = id -> true;
+
+    void setTrackable(IntPredicate trackable)
+    {
+        this.trackable = trackable;
+    }
+
+    /**
+     * Tracks places a borrowed item can be moved to while still being owed, such as the personal bank
+     * or worn equipment. Items leaving the inventory for anywhere else are treated as used up.
+     */
+    void updateKept(int containerId, ItemContainer container)
+    {
+        if (container == null)
+        {
+            return;
+        }
+        Map<Integer, Long> current = counts(container);
+        Map<Integer, Long> previous = keptContainers.put(containerId, current);
+        if (previous == null)
+        {
+            return;
+        }
+        for (int id : keys(previous, current))
+        {
+            long increase = current.getOrDefault(id, 0L) - previous.getOrDefault(id, 0L);
+            if (increase > 0)
+            {
+                addPending(pendingKeptAdds, pendingKeptExpiry, id, increase);
+            }
+        }
+        reconcile();
+    }
 
     void updateStorage(ItemContainer container)
     {
@@ -35,6 +76,10 @@ final class GroupStorageWithdrawals
                 if (decrease > 0)
                 {
                     addPending(pendingStorageWithdrawals, pendingStorageExpiry, id, decrease);
+                }
+                else if (decrease < 0)
+                {
+                    addPending(pendingStorageDeposits, pendingStorageDepositExpiry, id, -decrease);
                 }
             }
             reconcile();
@@ -55,6 +100,8 @@ final class GroupStorageWithdrawals
             inventoryContainerId = containerId;
             pendingInventoryAdds.clear();
             pendingInventoryExpiry.clear();
+            pendingInventoryRemovals.clear();
+            pendingInventoryRemovalExpiry.clear();
             return;
         }
         if (inventory != null)
@@ -68,7 +115,7 @@ final class GroupStorageWithdrawals
                 }
                 else if (change < 0)
                 {
-                    add(withdrawnInInventory, id, change);
+                    addPending(pendingInventoryRemovals, pendingInventoryRemovalExpiry, id, -change);
                 }
             }
             reconcile();
@@ -81,6 +128,25 @@ final class GroupStorageWithdrawals
         tick++;
         expire(pendingStorageWithdrawals, pendingStorageExpiry);
         expire(pendingInventoryAdds, pendingInventoryExpiry);
+        expire(pendingStorageDeposits, pendingStorageDepositExpiry);
+        expire(pendingKeptAdds, pendingKeptExpiry);
+        pendingInventoryRemovalExpiry.entrySet().removeIf(entry -> {
+            if (entry.getValue() > tick)
+            {
+                return false;
+            }
+            Long used = pendingInventoryRemovals.remove(entry.getKey());
+            if (used != null)
+            {
+                add(withdrawnInInventory, entry.getKey(), -used);
+            }
+            return true;
+        });
+    }
+
+    void clearBorrowed()
+    {
+        withdrawnInInventory.clear();
     }
 
     boolean hasItemsToReturn()
@@ -93,6 +159,50 @@ final class GroupStorageWithdrawals
         return Collections.unmodifiableMap(new HashMap<>(withdrawnInInventory));
     }
 
+    void restore(Map<Integer, Long> saved)
+    {
+        withdrawnInInventory.clear();
+        saved.forEach((id, quantity) -> {
+            if (trackable.test(id))
+            {
+                add(withdrawnInInventory, id, quantity);
+            }
+        });
+    }
+
+    static String encode(Map<Integer, Long> items)
+    {
+        StringBuilder result = new StringBuilder();
+        new java.util.TreeMap<>(items).forEach((id, quantity) ->
+            result.append(result.length() == 0 ? "" : ",").append(id).append(':').append(quantity));
+        return result.toString();
+    }
+
+    static Map<Integer, Long> decode(String value)
+    {
+        Map<Integer, Long> result = new HashMap<>();
+        if (value == null || value.isEmpty())
+        {
+            return result;
+        }
+        for (String entry : value.split(","))
+        {
+            String[] parts = entry.split(":");
+            try
+            {
+                if (parts.length == 2)
+                {
+                    add(result, Integer.parseInt(parts[0].trim()), Long.parseLong(parts[1].trim()));
+                }
+            }
+            catch (NumberFormatException ignored)
+            {
+                // Skip corrupted entries rather than losing the rest of the saved reminders.
+            }
+        }
+        return result;
+    }
+
     void clear()
     {
         storage = null;
@@ -102,6 +212,13 @@ final class GroupStorageWithdrawals
         pendingStorageExpiry.clear();
         pendingInventoryAdds.clear();
         pendingInventoryExpiry.clear();
+        pendingStorageDeposits.clear();
+        pendingStorageDepositExpiry.clear();
+        pendingInventoryRemovals.clear();
+        pendingInventoryRemovalExpiry.clear();
+        keptContainers.clear();
+        pendingKeptAdds.clear();
+        pendingKeptExpiry.clear();
         withdrawnInInventory.clear();
         tick = 0;
     }
@@ -114,11 +231,41 @@ final class GroupStorageWithdrawals
                 pendingInventoryAdds.getOrDefault(id, 0L));
             if (withdrawn > 0)
             {
-                add(withdrawnInInventory, id, withdrawn);
+                if (trackable.test(id))
+                {
+                    add(withdrawnInInventory, id, withdrawn);
+                }
                 add(pendingStorageWithdrawals, id, -withdrawn);
                 add(pendingInventoryAdds, id, -withdrawn);
                 removeExpiryIfEmpty(pendingStorageWithdrawals, pendingStorageExpiry, id);
                 removeExpiryIfEmpty(pendingInventoryAdds, pendingInventoryExpiry, id);
+            }
+        }
+        // Only items moved back into Group Storage count as returned.
+        for (int id : keys(pendingStorageDeposits, pendingInventoryRemovals))
+        {
+            long returned = Math.min(withdrawnInInventory.getOrDefault(id, 0L), Math.min(
+                pendingStorageDeposits.getOrDefault(id, 0L), pendingInventoryRemovals.getOrDefault(id, 0L)));
+            long matched = Math.min(pendingStorageDeposits.getOrDefault(id, 0L),
+                pendingInventoryRemovals.getOrDefault(id, 0L));
+            if (matched > 0)
+            {
+                add(withdrawnInInventory, id, -returned);
+                add(pendingStorageDeposits, id, -matched);
+                add(pendingInventoryRemovals, id, -matched);
+                removeExpiryIfEmpty(pendingStorageDeposits, pendingStorageDepositExpiry, id);
+                removeExpiryIfEmpty(pendingInventoryRemovals, pendingInventoryRemovalExpiry, id);
+            }
+        }
+        for (int id : keys(pendingKeptAdds, pendingInventoryRemovals))
+        {
+            long kept = Math.min(pendingKeptAdds.getOrDefault(id, 0L), pendingInventoryRemovals.getOrDefault(id, 0L));
+            if (kept > 0)
+            {
+                add(pendingKeptAdds, id, -kept);
+                add(pendingInventoryRemovals, id, -kept);
+                removeExpiryIfEmpty(pendingKeptAdds, pendingKeptExpiry, id);
+                removeExpiryIfEmpty(pendingInventoryRemovals, pendingInventoryRemovalExpiry, id);
             }
         }
     }

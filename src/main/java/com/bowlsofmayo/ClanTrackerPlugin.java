@@ -2,6 +2,16 @@ package com.bowlsofmayo;
 
 import com.google.gson.Gson;
 import com.google.inject.Provides;
+import java.awt.Canvas;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -15,17 +25,17 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
-import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.InventoryID;
-import net.runelite.api.MenuEntry;
+import net.runelite.api.MenuAction;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
@@ -38,7 +48,6 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
-import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.widgets.Widget;
@@ -53,11 +62,17 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayLayer;
+import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.QuantityFormatter;
 import net.runelite.client.util.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,6 +87,7 @@ public class ClanTrackerPlugin extends Plugin
     private static final Logger LOG = LoggerFactory.getLogger(ClanTrackerPlugin.class);
     private static final long LOGO_REFRESH_MILLIS = TimeUnit.MINUTES.toMillis(5);
     private static final String DEATH_COFFER_BALANCE_KEY = "deathCofferLastBalance";
+    private static final String BORROWED_ITEMS_KEY = "borrowedGroupStorageItems";
     private static final Pattern DEATH_COFFER_TEXT = Pattern.compile("^Coffer: (Empty|[0-9][0-9,]* coins?)$");
     private static final int[] BANK_TAB_VARBITS = {
         VarbitID.BANK_TAB_1, VarbitID.BANK_TAB_2, VarbitID.BANK_TAB_3, VarbitID.BANK_TAB_4, VarbitID.BANK_TAB_5,
@@ -86,6 +102,7 @@ public class ClanTrackerPlugin extends Plugin
     @Inject private ItemManager itemManager;
     @Inject private ConfigManager configManager;
     @Inject private Notifier notifier;
+    @Inject private OverlayManager overlayManager;
     @Inject private WorldMapPointManager mapManager;
     @Inject private okhttp3.OkHttpClient http;
 
@@ -112,8 +129,11 @@ public class ClanTrackerPlugin extends Plugin
     private volatile long logoFetchedAt;
     private volatile BufferedImage mapIcon;
     private volatile long mapIconFetchedAt;
+    private Canvas reminderCanvas;
     private static final long MAP_ICON_REFRESH_MILLIS = TimeUnit.SECONDS.toMillis(30);
     private String account;
+    private String borrowedItemsProfile;
+    private String savedBorrowedItems;
     private List<TrackerData.BankItem> bank;
     private long bankUpdatedAt;
     private List<TrackerData.BankItem> groupStorage;
@@ -127,7 +147,13 @@ public class ClanTrackerPlugin extends Plugin
     private List<TrackerData.Member> groupMembers = Collections.emptyList();
     private final BankSnapshots bankSnapshots = new BankSnapshots();
     private final GroupStorageWithdrawals groupStorageWithdrawals = new GroupStorageWithdrawals();
-    private volatile boolean approvedLogout;
+    private final Map<Integer, Boolean> trackableItems = new HashMap<>();
+
+    {
+        // Food and potions are consumed, so they are never shown as owed to Group Storage.
+        groupStorageWithdrawals.setTrackable(this::isTrackableBorrowedItem);
+    }
+    private final LogoutReminderOverlay logoutReminderOverlay = new LogoutReminderOverlay();
 
     @Provides
     ClanTrackerConfig provideConfig(ConfigManager manager)
@@ -144,6 +170,15 @@ public class ClanTrackerPlugin extends Plugin
         panel.setDeathCofferVisible(config.trackDeathCoffer());
         panel.setDeathCofferThreshold(config.deathCofferLowThreshold());
         running = true;
+        if (overlayManager != null)
+        {
+            overlayManager.add(logoutReminderOverlay);
+        }
+        reminderCanvas = client == null ? null : client.getCanvas();
+        if (reminderCanvas != null)
+        {
+            reminderCanvas.addMouseWheelListener(logoutReminderOverlay);
+        }
         logoFetchedAt = 0;
         mapIconFetchedAt = 0;
         int currentGeneration = ++generation;
@@ -195,6 +230,15 @@ public class ClanTrackerPlugin extends Plugin
             xpWorker.shutdownNow();
         }
         mapManager.removeIf(GroupMapPoint.class::isInstance);
+        if (overlayManager != null)
+        {
+            overlayManager.remove(logoutReminderOverlay);
+        }
+        if (reminderCanvas != null)
+        {
+            reminderCanvas.removeMouseWheelListener(logoutReminderOverlay);
+            reminderCanvas = null;
+        }
         NavigationButton current = button;
         SwingUtilities.invokeLater(() -> {
             if (current != null)
@@ -209,11 +253,76 @@ public class ClanTrackerPlugin extends Plugin
         resetAccount();
     }
 
+    private boolean isTrackableBorrowedItem(int itemId)
+    {
+        if (itemManager == null)
+        {
+            return true;
+        }
+        return trackableItems.computeIfAbsent(itemId, id -> {
+            String[] actions = itemManager.getItemComposition(id).getInventoryActions();
+            if (actions != null)
+            {
+                for (String action : actions)
+                {
+                    if ("Eat".equalsIgnoreCase(action) || "Drink".equalsIgnoreCase(action))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        });
+    }
+
+    private void trackBorrowedItems()
+    {
+        // Tracking runs even while the overlay is hidden, so re-enabling it shows items still owed.
+        String profile = configManager.getRSProfileKey();
+        if (profile != null && !profile.equals(borrowedItemsProfile))
+        {
+            borrowedItemsProfile = profile;
+            savedBorrowedItems = configManager.getRSProfileConfiguration("bowlsofmayo", BORROWED_ITEMS_KEY);
+            groupStorageWithdrawals.restore(GroupStorageWithdrawals.decode(savedBorrowedItems));
+        }
+        groupStorageWithdrawals.updateStorage(client.getItemContainer(InventoryID.GROUP_STORAGE));
+        groupStorageWithdrawals.updateKept(InventoryID.BANK.getId(), client.getItemContainer(InventoryID.BANK));
+        groupStorageWithdrawals.updateKept(InventoryID.EQUIPMENT.getId(), client.getItemContainer(InventoryID.EQUIPMENT));
+        int inventoryContainerId = getWithdrawalInventoryContainerId();
+        groupStorageWithdrawals.updateInventory(inventoryContainerId, client.getItemContainer(inventoryContainerId));
+        groupStorageWithdrawals.finishTick();
+        saveBorrowedItems();
+    }
+
+    private void saveBorrowedItems()
+    {
+        if (borrowedItemsProfile == null)
+        {
+            return;
+        }
+        String encoded = GroupStorageWithdrawals.encode(groupStorageWithdrawals.itemsToReturn());
+        String saved = savedBorrowedItems == null ? "" : savedBorrowedItems;
+        if (encoded.equals(saved))
+        {
+            return;
+        }
+        if (encoded.isEmpty())
+        {
+            configManager.unsetRSProfileConfiguration("bowlsofmayo", BORROWED_ITEMS_KEY);
+        }
+        else
+        {
+            configManager.setRSProfileConfiguration("bowlsofmayo", BORROWED_ITEMS_KEY, encoded);
+        }
+        savedBorrowedItems = encoded;
+    }
+
     private void resetAccount()
     {
         liveXp.clear();
         groupStorageWithdrawals.clear();
-        approvedLogout = false;
+        borrowedItemsProfile = null;
+        savedBorrowedItems = null;
         deathCofferValue = Integer.MIN_VALUE;
         deathCofferProfile = null;
         publishDeathCofferValue();
@@ -267,17 +376,7 @@ public class ClanTrackerPlugin extends Plugin
         {
             refreshDeathCoffer();
         }
-        if (config.gimStorageReminder())
-        {
-            groupStorageWithdrawals.updateStorage(client.getItemContainer(InventoryID.GROUP_STORAGE));
-            int inventoryContainerId = getWithdrawalInventoryContainerId();
-            groupStorageWithdrawals.updateInventory(inventoryContainerId, client.getItemContainer(inventoryContainerId));
-            groupStorageWithdrawals.finishTick();
-        }
-        else
-        {
-            groupStorageWithdrawals.clear();
-        }
+        trackBorrowedItems();
         if (!config.enableConnection())
         {
             return;
@@ -333,6 +432,9 @@ public class ClanTrackerPlugin extends Plugin
         member.username = account;
         member.observedAt = System.currentTimeMillis();
         member.bankShared = config.shareBank();
+        member.borrowedItemsShared = config.shareStorageWithdrawals();
+        member.borrowedItems = member.borrowedItemsShared ? groupStorageWithdrawals.itemsToReturn() : null;
+        member.borrowedItemsUpdatedAt = member.observedAt;
         member.questPoints = client.getVarpValue(VarPlayerID.QP);
         if (config.bossAlerts())
         {
@@ -432,17 +534,19 @@ public class ClanTrackerPlugin extends Plugin
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged event)
     {
-        if (config.gimStorageReminder())
+        int inventoryContainerId = getWithdrawalInventoryContainerId();
+        if (event.getContainerId() == inventoryContainerId)
         {
-            int inventoryContainerId = getWithdrawalInventoryContainerId();
-            if (event.getContainerId() == inventoryContainerId)
-            {
-                groupStorageWithdrawals.updateInventory(inventoryContainerId, event.getItemContainer());
-            }
-            else if (event.getContainerId() == InventoryID.GROUP_STORAGE.getId())
-            {
-                groupStorageWithdrawals.updateStorage(event.getItemContainer());
-            }
+            groupStorageWithdrawals.updateInventory(inventoryContainerId, event.getItemContainer());
+        }
+        else if (event.getContainerId() == InventoryID.GROUP_STORAGE.getId())
+        {
+            groupStorageWithdrawals.updateStorage(event.getItemContainer());
+        }
+        else if (event.getContainerId() == InventoryID.BANK.getId() ||
+            event.getContainerId() == InventoryID.EQUIPMENT.getId())
+        {
+            groupStorageWithdrawals.updateKept(event.getContainerId(), event.getItemContainer());
         }
         if (!config.shareBank() || account == null || client.getGameState() != GameState.LOGGED_IN ||
             (event.getContainerId() != InventoryID.BANK.getId() &&
@@ -468,72 +572,209 @@ public class ClanTrackerPlugin extends Plugin
         captureSnapshot();
     }
 
-    @Subscribe
-    public void onMenuOptionClicked(MenuOptionClicked event)
-    {
-        if (!isLogoutAction(event))
-        {
-            return;
-        }
-        if (!config.gimStorageReminder())
-        {
-            return;
-        }
-        if (approvedLogout)
-        {
-            approvedLogout = false;
-            return;
-        }
-        if (!groupStorageWithdrawals.hasItemsToReturn())
-        {
-            return;
-        }
-        event.consume();
-        MenuEntry entry = event.getMenuEntry();
-        String warning = logoutWarningMessage(groupStorageWithdrawals.itemsToReturn());
-        SwingUtilities.invokeLater(() -> {
-            int choice = JOptionPane.showConfirmDialog(null,
-                warning,
-                "Group Storage Items", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-            if (choice == JOptionPane.YES_OPTION)
-            {
-                clientThread.invokeLater(() -> {
-                    if (running)
-                    {
-                        approvedLogout = true;
-                        client.menuAction(entry.getParam0(), entry.getParam1(), entry.getType(),
-                            entry.getIdentifier(), entry.getItemId(), entry.getOption(), entry.getTarget());
-                    }
-                    return true;
-                });
-            }
-        });
-    }
-
-    private String logoutWarningMessage(Map<Integer, Long> items)
-    {
-        StringBuilder message = new StringBuilder("You still have items withdrawn from Group Ironman storage:\n");
-        for (Map.Entry<Integer, Long> item : new TreeMap<>(items).entrySet())
-        {
-            String name = itemManager.getItemComposition(item.getKey()).getName();
-            message.append("- ").append(name).append(" x ").append(item.getValue()).append('\n');
-        }
-        message.append("\nAre you sure you want to log out before returning them?");
-        return message.toString();
-    }
-
-    static boolean isLogoutAction(MenuOptionClicked event)
-    {
-        String option = event.getMenuOption();
-        return option != null && "Logout".equalsIgnoreCase(option.trim());
-    }
-
     private int getWithdrawalInventoryContainerId()
     {
         Widget groupStorage = client.getWidget(InterfaceID.SharedBank.FRAME);
         return groupStorage != null && !groupStorage.isHidden()
             ? InventoryID.GROUP_STORAGE_INV.getId()
             : InventoryID.INVENTORY.getId();
+    }
+
+    private final class LogoutReminderOverlay extends Overlay implements MouseWheelListener
+    {
+        private static final int WIDTH = 250;
+        private static final int PADDING = 9;
+        private static final int ROW_HEIGHT = 15;
+        private static final int TOP_HEIGHT = 62;
+        private static final int BOTTOM_HEIGHT = 46;
+        private static final int MAX_VISIBLE_ROWS = 10;
+        private static final int EDGE_PADDING = 4;
+        private final Color warningColor = new Color(229, 57, 78);
+        private final Color mutedColor = new Color(185, 187, 194);
+        private final Color backgroundColor = new Color(43, 45, 49, 240);
+        private final Color borderColor = new Color(72, 73, 80);
+        private final AtomicInteger scrollOffset = new AtomicInteger();
+        private volatile int maxScrollRows;
+
+        private LogoutReminderOverlay()
+        {
+            super(ClanTrackerPlugin.this);
+            setPosition(OverlayPosition.TOP_RIGHT);
+            setLayer(OverlayLayer.ABOVE_WIDGETS);
+            setMovable(true);
+            addMenuEntry(MenuAction.RUNELITE_OVERLAY, "Clear", "My borrowed items", entry -> {
+                groupStorageWithdrawals.clearBorrowed();
+                saveBorrowedItems();
+            });
+        }
+
+        @Override
+        public Dimension render(Graphics2D graphics)
+        {
+            if (!config.gimStorageReminder())
+            {
+                return null;
+            }
+            List<BorrowerRow> rows = borrowerRows();
+            if (rows.isEmpty())
+            {
+                return null;
+            }
+
+            int canvasRows = (client.getCanvas().getHeight() - 2 * EDGE_PADDING - TOP_HEIGHT - BOTTOM_HEIGHT) / ROW_HEIGHT;
+            int visibleRows = Math.min(rows.size(), Math.max(1, Math.min(MAX_VISIBLE_ROWS, canvasRows)));
+            maxScrollRows = rows.size() - visibleRows;
+            int firstRow = scrollOffset.updateAndGet(offset -> Math.max(0, Math.min(offset, maxScrollRows)));
+            int height = TOP_HEIGHT + visibleRows * ROW_HEIGHT + BOTTOM_HEIGHT;
+            Dimension size = new Dimension(WIDTH, height);
+
+            Graphics2D g = (Graphics2D) graphics.create();
+            try
+            {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(backgroundColor);
+                g.fillRoundRect(0, 0, WIDTH, height, 8, 8);
+                g.setColor(borderColor);
+                g.drawRoundRect(0, 0, WIDTH - 1, height - 1, 8, 8);
+                g.setColor(warningColor);
+                g.fillRoundRect(0, 0, 4, height, 4, 4);
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+                g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+                drawCard(g, rows, firstRow, visibleRows, height);
+            }
+            finally
+            {
+                g.dispose();
+            }
+            return size;
+        }
+
+        private void drawCard(Graphics2D g, List<BorrowerRow> rows, int firstRow, int visibleRows, int height)
+        {
+            int left = PADDING + 3;
+            int right = WIDTH - PADDING;
+            fillDot(g, left, 8);
+            g.setFont(FontManager.getRunescapeBoldFont());
+            text(g, "CURRENTLY BORROWED", left + 15, 19, Color.WHITE);
+            BufferedImage icon = itemManager.getImage(rows.get(firstRow).itemId);
+            if (icon != null)
+            {
+                g.drawImage(icon, right - 27, 3, 27, 24, null);
+            }
+
+            g.setFont(FontManager.getRunescapeSmallFont());
+            String subtitle = maxScrollRows > 0
+                ? "Scroll to see all " + rows.size() + " borrowed items."
+                : "Group members have items from Group Storage.";
+            text(g, fit(subtitle, right - left, g.getFontMetrics()), left, 37, Color.WHITE);
+
+            int borrowerX = left + 104;
+            int quantityX = right - 34;
+            int headerY = 55;
+            text(g, "Item", left, headerY, mutedColor);
+            text(g, "Borrower", borrowerX, headerY, mutedColor);
+            text(g, "Qty", quantityX, headerY, mutedColor);
+            g.setColor(borderColor);
+            g.drawLine(left, headerY + 4, right, headerY + 4);
+
+            FontMetrics metrics = g.getFontMetrics();
+            for (int i = 0; i < visibleRows; i++)
+            {
+                BorrowerRow row = rows.get(firstRow + i);
+                int baseline = TOP_HEIGHT + 10 + i * ROW_HEIGHT;
+                String item = itemManager.getItemComposition(row.itemId).getName();
+                text(g, fit(item, borrowerX - left - 6, metrics), left, baseline, Color.WHITE);
+                text(g, fit(row.borrower, quantityX - borrowerX - 6, metrics), borrowerX, baseline, Color.WHITE);
+                text(g, QuantityFormatter.quantityToStackSize(row.quantity), quantityX, baseline, Color.YELLOW);
+            }
+
+            int statusY = TOP_HEIGHT + visibleRows * ROW_HEIGHT + 14;
+            text(g, "Status", left, statusY, mutedColor);
+            fillDot(g, left + 42, statusY - 9);
+            g.setFont(FontManager.getRunescapeBoldFont());
+            text(g, "NOT RETURNED", left + 57, statusY + 1, warningColor);
+            g.setFont(FontManager.getRunescapeSmallFont());
+            text(g, "Group Iron Companion", left, height - 8, mutedColor);
+        }
+
+        private void fillDot(Graphics2D g, int x, int y)
+        {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(warningColor);
+            g.fillOval(x, y, 11, 11);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        }
+
+        private void text(Graphics2D g, String value, int x, int y, Color color)
+        {
+            g.setColor(Color.BLACK);
+            g.drawString(value, x + 1, y + 1);
+            g.setColor(color);
+            g.drawString(value, x, y);
+        }
+
+        private List<BorrowerRow> borrowerRows()
+        {
+            Map<Integer, Map<String, Long>> byItem = new TreeMap<>();
+            for (TrackerData.Member member : groupMembers)
+            {
+                if (member.username == null || member.borrowedItems == null ||
+                    FeatureParser.samePlayer(member.username, account))
+                {
+                    continue;
+                }
+                for (Map.Entry<Integer, Long> item : member.borrowedItems.entrySet())
+                {
+                    addBorrowedItem(byItem, item.getKey(), member.username, item.getValue());
+                }
+            }
+
+            String localName = account == null ? "You" : account;
+            for (Map.Entry<Integer, Long> item : groupStorageWithdrawals.itemsToReturn().entrySet())
+            {
+                addBorrowedItem(byItem, item.getKey(), localName, item.getValue());
+            }
+
+            List<BorrowerRow> rows = new ArrayList<>();
+            byItem.forEach((itemId, borrowers) -> borrowers.forEach((borrower, quantity) ->
+                rows.add(new BorrowerRow(itemId, borrower, quantity))));
+            return rows;
+        }
+
+        private void addBorrowedItem(Map<Integer, Map<String, Long>> byItem, int itemId, String borrower, Long quantity)
+        {
+            if (itemId > 0 && quantity != null && quantity > 0 && isTrackableBorrowedItem(itemId))
+            {
+                byItem.computeIfAbsent(itemId, ignored -> new TreeMap<>()).put(borrower, quantity);
+            }
+        }
+
+        @Override
+        public void mouseWheelMoved(MouseWheelEvent event)
+        {
+            Rectangle bounds = getBounds();
+            if (config.gimStorageReminder() && bounds != null && !bounds.isEmpty() && bounds.contains(event.getPoint()) && maxScrollRows > 0)
+            {
+                scrollOffset.updateAndGet(offset ->
+                    Math.max(0, Math.min(offset + event.getWheelRotation(), maxScrollRows)));
+                event.consume();
+            }
+        }
+
+        private String fit(String value, int width, FontMetrics metrics)
+        {
+            if (metrics.stringWidth(value) <= width)
+            {
+                return value;
+            }
+            String shortened = value;
+            while (!shortened.isEmpty() && metrics.stringWidth(shortened + "..") > width)
+            {
+                shortened = shortened.substring(0, shortened.length() - 1);
+            }
+            return shortened + "..";
+        }
     }
 
     private void checkQuests()
@@ -1066,6 +1307,7 @@ public class ClanTrackerPlugin extends Plugin
                 break;
             case "shareLiveXp":
             case "shareBank":
+            case "shareStorageWithdrawals":
             case "shareLocation":
             case "shareChat":
             case "bossAlerts":
@@ -1276,6 +1518,20 @@ public class ClanTrackerPlugin extends Plugin
             }
             toolbar.addNavigation(button);
         });
+    }
+
+    private static final class BorrowerRow
+    {
+        private final int itemId;
+        private final String borrower;
+        private final long quantity;
+
+        private BorrowerRow(int itemId, String borrower, long quantity)
+        {
+            this.itemId = itemId;
+            this.borrower = borrower;
+            this.quantity = quantity;
+        }
     }
 
     private static final class GroupMapPoint extends WorldMapPoint
